@@ -218,6 +218,7 @@ CONTRACT_NAMES.forEach((contractName) => {
         id: `${serviceId}-${event.args.agentInstance}`,
         serviceId,
         agentInstanceId: event.args.agentInstance,
+        chain,
       });
       ``;
     } catch (e) {

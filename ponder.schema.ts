@@ -124,6 +124,7 @@ export const ServiceAgent = onchainTable("service_agent", (t) => ({
   id: t.text().primaryKey(),
   serviceId: t.text().notNull(),
   agentInstanceId: t.text().notNull(),
+  chain: t.text().notNull(),
 }));
 
 export const ServiceAgentRelations = relations(ServiceAgent, ({ one }) => ({
