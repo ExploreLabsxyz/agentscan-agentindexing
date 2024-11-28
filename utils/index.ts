@@ -1,5 +1,4 @@
 import axios from "axios";
-import NodeCache from "node-cache";
 
 export const getChainName = (contractName: string) => {
   return contractName
@@ -50,77 +49,35 @@ export const getChainId = (chain: string): number => {
   }
 };
 
-const metadataCache = new NodeCache({
-  stdTTL: 3600,
-  checkperiod: 600,
-  useClones: false,
-  maxKeys: 4000,
-});
+interface MetadataJson {
+  name: string;
+  description: string;
+  image: string;
+  code_uri: string;
+  metadataURI: string;
+}
+
+const DEFAULT_METADATA: MetadataJson = {
+  name: "",
+  description: "",
+  image: "",
+  code_uri: "",
+  metadataURI: "",
+};
 
 export async function fetchMetadata(
   hash: string,
   id: string,
-  type: "component" | "service" | "agent",
-  useCache: boolean = true
-): Promise<any> {
-  const cacheKey = `${hash}-${id}-${type}`;
-
-  if (useCache) {
-    const cachedData = metadataCache.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-  }
-
+  type: "component" | "service" | "agent"
+): Promise<MetadataJson> {
   try {
-    const metadata = await fetchAndTransformMetadata(hash, 3, { type, id });
-
-    if (metadata) {
-      metadataCache.set(cacheKey, metadata);
-    }
-
-    return metadata;
+    const result = await fetchAndTransformMetadata(hash, 3, { type, id });
+    return result || DEFAULT_METADATA;
   } catch (error) {
     console.error(`Metadata fetch failed for ${type} ${id}:`, error);
-    return null;
+    return DEFAULT_METADATA;
   }
 }
-
-metadataCache.on("error", (err) => {
-  console.error("Cache error:", err);
-});
-
-export async function fetchAndEmbedMetadataWrapper(
-  hash: string,
-  componentId: string
-) {
-  try {
-    return await fetchAndEmbedMetadata(hash, 5, componentId);
-  } catch (error) {
-    console.error(`Metadata embed failed for component ${componentId}:`, error);
-    return null;
-  }
-}
-
-export const fetchAndEmbedMetadata = async (
-  configHash: string,
-  maxRetries = 3,
-  componentId: string
-) => {
-  // Create config info object for component type
-  const configInfo = {
-    type: "component",
-    id: componentId,
-  };
-
-  const metadata = await fetchAndTransformMetadata(
-    configHash,
-    maxRetries,
-    configInfo as ConfigInfo
-  );
-
-  return metadata;
-};
 
 export async function withErrorBoundary<T>(
   operation: () => Promise<T>,
@@ -139,21 +96,11 @@ interface ConfigInfo {
   id: string;
 }
 
-interface MetadataJson {
-  name?: string | null;
-  description?: string | null;
-  image?: string | null;
-  code_uri?: string | null;
-  packageHash?: string | null;
-  metadataURI?: string;
-}
-
-// Update fetchAndTransformMetadata with better error handling and types
 export const fetchAndTransformMetadata = async (
   configHash: string,
   maxRetries = 3,
   configInfo: ConfigInfo
-): Promise<MetadataJson | null> => {
+): Promise<MetadataJson> => {
   const metadataPrefix = "f01701220";
   const finishedConfigHash = configHash.slice(2);
   const ipfsURL = "https://gateway.autonolas.tech/ipfs/";
@@ -161,19 +108,22 @@ export const fetchAndTransformMetadata = async (
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const { data } = await axios.get<MetadataJson>(metadataURI, {
-        timeout: 10000,
+      const { data } = await axios.get<any>(metadataURI, {
+        timeout: 5000,
       });
 
+      // Validate the response data
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid metadata format");
+      }
+
       const metadataJson: MetadataJson = {
-        name: data.name || null,
-        description: data.description || null,
-        image: data.image || null,
-        code_uri: data.code_uri || null,
-        packageHash: extractPackageHash(
-          data.code_uri ?? undefined,
-          data.packageHash
-        ),
+        name: typeof data.name === "string" ? data.name : "",
+        description:
+          typeof data.description === "string" ? data.description : "",
+        image: typeof data.image === "string" ? data.image : "",
+        code_uri: typeof data.code_uri === "string" ? data.code_uri : "",
+
         metadataURI: metadataURI,
       };
 
@@ -185,29 +135,26 @@ export const fetchAndTransformMetadata = async (
           `Failed to fetch metadata after ${maxRetries} attempts:`,
           error
         );
-        return null;
+        return DEFAULT_METADATA;
       }
       await handleRetry(attempt, metadataURI);
     }
   }
-  return null;
+  return DEFAULT_METADATA;
 };
 
 // Helper functions for better code organization
-function extractPackageHash(
-  codeUri?: string,
-  existingHash?: string | null
-): string | null {
+function extractPackageHash(codeUri?: string, existingHash?: string): string {
   if (codeUri) {
     if (codeUri.includes("ipfs://")) {
-      return codeUri.split("ipfs://")[1]?.trim().replace(/\/$/, "") || null;
+      return codeUri.split("ipfs://")[1]?.trim().replace(/\/$/, "") || "";
     }
     if (codeUri.includes("/ipfs/")) {
-      return codeUri.split("/ipfs/")[1]?.trim().replace(/\/$/, "") || null;
+      return codeUri.split("/ipfs/")[1]?.trim().replace(/\/$/, "") || "";
     }
     return codeUri.trim().replace(/\/$/, "");
   }
-  return existingHash?.trim().replace(/\/$/, "") || null;
+  return existingHash?.trim().replace(/\/$/, "") || "";
 }
 
 function transformIpfsUrls(
@@ -220,18 +167,18 @@ function transformIpfsUrls(
     ...metadata,
     image: metadata.image?.startsWith("ipfs://")
       ? metadata.image.replace("ipfs://", gatewayUrl)
-      : metadata.image,
+      : metadata.image || "",
     code_uri: metadata.code_uri?.startsWith("ipfs://")
       ? metadata.code_uri.replace("ipfs://", gatewayUrl)
-      : metadata.code_uri,
-    metadataURI: metadataURI,
+      : metadata.code_uri || "",
+    metadataURI: metadataURI || "",
   };
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function handleRetry(attempt: number, metadataURI: string) {
-  const backoffTime = Math.min(500 * (attempt + 1), 2000);
+  const backoffTime = Math.min(500 * (attempt + 1), 1500);
   console.log(
     `Attempt ${attempt + 1} failed for ${metadataURI}, retrying in ${
       backoffTime / 1000

@@ -22,19 +22,26 @@ export const Service = onchainTable(
     state: ServiceState("state"),
     blockNumber: t.integer().notNull(),
     timestamp: t.integer().notNull(),
-    metadata: t.json(),
-    chainId: t.integer().notNull(),
-    packageHash: t.text(),
+    name: t.text(),
+    description: t.text(),
+    image: t.text(),
+    codeUri: t.text(),
+    chainId: t.integer(),
+
     metadataHash: t.text(),
     metadataURI: t.text(),
   }),
   (table) => ({
     idx: index().on(table.id),
     chainIdx: index().on(table.chain),
-    packageHashIdx: index().on(table.packageHash),
+
     metadataHashIdx: index().on(table.metadataHash),
     timestampIdx: index().on(table.timestamp),
     blockNumberIdx: index().on(table.blockNumber),
+    nameIdx: index().on(table.name),
+    descriptionIdx: index().on(table.description),
+    imageIdx: index().on(table.image),
+    codeUriIdx: index().on(table.codeUri),
   })
 );
 
@@ -44,21 +51,26 @@ export const Agent = onchainTable(
     id: t.text().primaryKey(),
     name: t.text(),
     description: t.text(),
-    metadata: t.json(),
+    image: t.text(),
+    codeUri: t.text(),
     blockNumber: t.integer().notNull(),
     timestamp: t.integer().notNull(),
     metadataHash: t.text(),
     metadataURI: t.text(),
-    packageHash: t.text(),
+
     operator: t.text(),
   }),
   (table) => ({
     idx: index().on(table.id),
-    packageHashIdx: index().on(table.packageHash),
+
     metadataHashIdx: index().on(table.metadataHash),
     timestampIdx: index().on(table.timestamp),
     blockNumberIdx: index().on(table.blockNumber),
     operatorIdx: index().on(table.operator),
+    nameIdx: index().on(table.name),
+    descriptionIdx: index().on(table.description),
+    imageIdx: index().on(table.image),
+    codeUriIdx: index().on(table.codeUri),
   })
 );
 
@@ -83,20 +95,26 @@ export const Component = onchainTable(
   (t) => ({
     id: t.text().primaryKey(),
     instance: t.text().notNull(),
-    metadata: t.json(),
+    name: t.text(),
+    description: t.text(),
+    image: t.text(),
+    codeUri: t.text(),
     blockNumber: t.integer().notNull(),
     timestamp: t.integer().notNull(),
     metadataHash: t.text(),
     metadataURI: t.text(),
-    packageHash: t.text(),
   }),
   (table) => ({
     idx: index().on(table.id),
     instanceIdx: index().on(table.instance),
-    packageHashIdx: index().on(table.packageHash),
+
     metadataHashIdx: index().on(table.metadataHash),
     timestampIdx: index().on(table.timestamp),
     blockNumberIdx: index().on(table.blockNumber),
+    nameIdx: index().on(table.name),
+    descriptionIdx: index().on(table.description),
+    imageIdx: index().on(table.image),
+    codeUriIdx: index().on(table.codeUri),
   })
 );
 

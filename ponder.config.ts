@@ -9,39 +9,27 @@ export default createConfig({
   networks: {
     mainnet: {
       chainId: 1,
-      transport: http(process.env.PONDER_RPC_URL_1, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_1),
     },
     polygon: {
       chainId: 137,
-      transport: http(process.env.PONDER_RPC_URL_137, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_137),
     },
     gnosis: {
       chainId: 100,
-      transport: http(process.env.PONDER_RPC_URL_100, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_100),
     },
     arbitrum: {
       chainId: 42161,
-      transport: http(process.env.PONDER_RPC_URL_42161, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_42161),
     },
     optimism: {
       chainId: 10,
-      transport: http(process.env.PONDER_RPC_URL_10, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_10),
     },
     base: {
       chainId: 8453,
-      transport: http(process.env.PONDER_RPC_URL_8453, {
-        batch: true,
-      }),
+      transport: http(process.env.PONDER_RPC_URL_8453),
     },
     // celo: {
     //   chainId: 42220,
