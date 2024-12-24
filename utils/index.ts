@@ -3,6 +3,7 @@ import axios from "axios";
 import { generateEmbeddingWithRetry } from "./openai";
 import { replaceBigInts } from "ponder";
 import { createClient } from "redis";
+import type { RedisClientType } from "redis";
 import {
   ConfigInfo,
   ImplementationResult,
@@ -32,11 +33,45 @@ const axiosInstance = axios.create({
   maxContentLength: 500000,
 });
 
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
-});
+// Create a mock Redis client that implements the same interface but does nothing
+const createMockRedisClient = (): RedisClientType => {
+  const mockClient = {
+    isReady: false,
+    isOpen: false,
+    connect: async () => mockClient,
+    disconnect: async () => void 0,
+    quit: async () => void 0,
+    get: async () => null,
+    set: async () => "OK",
+    on: () => mockClient,
+    off: () => mockClient,
+    // Add other required methods with no-op implementations
+    sendCommand: async () => null,
+    multi: () => ({ exec: async () => [] }),
+    QUIT: async () => "OK",
+    SELECT: async () => "OK",
+    ping: async () => "PONG",
+  };
+  return mockClient as unknown as RedisClientType;
+};
 
-redisClient.connect().catch(console.error);
+// Initialize Redis client only if REDIS_URL is defined
+const redisClient = process.env.REDIS_URL
+  ? createClient({
+      url: process.env.REDIS_URL,
+    })
+  : createMockRedisClient();
+
+// Only attempt to connect if we're using a real Redis client
+if (process.env.REDIS_URL) {
+  redisClient.connect().catch((error) => {
+    console.warn("[Redis] Failed to connect to Redis, caching will be disabled:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  });
+} else {
+  console.debug("[Redis] Redis URL not configured, caching will be disabled");
+}
 
 export const getChainName = (contractName: string) => {
   return contractName
@@ -583,14 +618,15 @@ export async function checkAndStoreAbi(
     const abidataRedisKey = getAbidataRedisKey(formattedAddress, network);
 
     try {
-      if (redisClient.isReady) {
+      // Only attempt to use Redis cache if REDIS_URL is configured
+      if (process.env.REDIS_URL && redisClient.isReady) {
         const cachedAbidataResponse = await redisClient.get(abidataRedisKey);
         if (cachedAbidataResponse) {
           try {
             const parsedResponse = JSON.parse(cachedAbidataResponse);
 
             if (parsedResponse === null) {
-              console.log(
+              console.debug(
                 `[ABI] Using cached negative response for ${formattedAddress}`
               );
               return null;
@@ -614,10 +650,6 @@ export async function checkAndStoreAbi(
             );
           }
         }
-      } else {
-        console.warn(
-          `[ABI] Redis cache unavailable for ${formattedAddress}, proceeding without cache`
-        );
       }
     } catch (redisError) {
       console.warn(
@@ -638,11 +670,13 @@ export async function checkAndStoreAbi(
 
       if (!response.data?.ok || !response.data.abi) {
         try {
-          if (redisClient.isReady) {
+          // Only attempt to cache if REDIS_URL is configured
+          if (process.env.REDIS_URL && redisClient.isReady) {
             void redisClient.set(abidataRedisKey, JSON.stringify(null), {
               EX: NEGATIVE_RESPONSE_TTL,
+              NX: true
             });
-            console.log(
+            console.debug(
               `[ABI] Cached negative response for ${formattedAddress} with ${NEGATIVE_RESPONSE_TTL}s TTL`
             );
           }
@@ -664,12 +698,13 @@ export async function checkAndStoreAbi(
       const processedAbi = JSON.stringify(response.data.abi);
 
       try {
-        if (redisClient.isReady) {
-          void redisClient.set(abidataRedisKey, processedAbi, { EX: TTL });
-        } else {
-          console.warn(
-            `[ABI] Redis cache unavailable for ${formattedAddress}, proceeding without cache`
-          );
+        // Only attempt to cache if REDIS_URL is configured
+        if (process.env.REDIS_URL && redisClient.isReady) {
+          void redisClient.set(abidataRedisKey, processedAbi, {
+            EX: TTL,
+            NX: true
+          });
+          console.debug(`[ABI] Cached ABI for ${formattedAddress} with ${TTL}s TTL`);
         }
       } catch (redisCacheError) {
         console.warn(

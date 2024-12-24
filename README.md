@@ -18,14 +18,26 @@ most of these chains you can get from [Alchemy](https://www.alchemy.com/), as an
 npm install
 ```
 
-3. Create a `.env.local` file with your RPC URLs:
+3. Create a `.env.local` file with your RPC URLs and optional database configuration:
 ```
 PONDER_RPC_URL_8453="..."
 PONDER_RPC_URL_1="....
 PONDER_RPC_URL_10="..."
+
+# Optional: PostgreSQL database for ABI storage and embeddings
+# Required if you want to use ABI storage and embedding features
+ABI_DATABASE_URL="postgresql://user:password@host:port/database"
 ```
 
-4. Start the development server:
+4. (Optional) Set up the database:
+If you want to use ABI storage and embeddings functionality, initialize the database:
+```bash
+# Run the database setup script
+npm run setup-db
+```
+This will create the required tables and indexes in your PostgreSQL database.
+
+5. Start the development server:
 ```bash
 npm run dev
 ```

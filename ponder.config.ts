@@ -5,6 +5,24 @@ import { ServiceRegistryABI } from "./abis/ServiceRegistryABI";
 import { AgentRegistryABI } from "./abis/AgentRegistry";
 import { ComponentRegistryABI } from "./abis/ComponentRegistry";
 
+// Validate required environment variables
+const requiredRpcUrls = {
+  'PONDER_RPC_URL_1': 'Ethereum Mainnet',
+  'PONDER_RPC_URL_10': 'Optimism',
+  'PONDER_RPC_URL_100': 'Gnosis Chain',
+  'PONDER_RPC_URL_137': 'Polygon',
+  'PONDER_RPC_URL_8453': 'Base',
+  'PONDER_RPC_URL_42161': 'Arbitrum'
+};
+
+for (const [envVar, network] of Object.entries(requiredRpcUrls)) {
+  if (!process.env[envVar]) {
+    throw new Error(
+      `${envVar} is required for ${network}. Please set it in .env or .env.local`
+    );
+  }
+}
+
 export default createConfig({
   networks: {
     mainnet: {

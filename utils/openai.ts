@@ -4,9 +4,17 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client only if ABI database is configured
+const canUseAbiDb = !!process.env.ABI_DATABASE_URL;
+const openai = canUseAbiDb
+  ? new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  : null;
+
+if (!canUseAbiDb) {
+  console.debug("[OpenAI] ABI database not configured, embeddings will be disabled");
+}
 
 // Add type for retry options
 interface RetryOptions {
@@ -20,7 +28,6 @@ export const TOKEN_OVERLAP = 25; // Reduced from 50
 export const MIN_CHUNK_LENGTH = 100;
 export const ABSOLUTE_MAX_TOKENS = 7000; // Reduced from 8000
 const RATE_LIMIT_PAUSE = 60000; // 1 minute pause when hitting rate limits
-const MAX_CONCURRENT_REQUESTS = 5; // Limit parallel requests
 const REQUEST_BATCH_SIZE = 10; // Process embeddings in batches
 
 // Helper function to estimate tokens (rough approximation)
@@ -31,7 +38,7 @@ export function estimateTokens(text: string | undefined): number {
     // Even more conservative for JSON/ABI content
     return Math.ceil(text.length / 2); // Changed from 2.5 to 2
   }
-  const hasCode = /[{}\[\]()]/g.test(text);
+  const hasCode = /[{}[\]()]/g.test(text);
   return Math.ceil(text.length / (hasCode ? 2 : 3)); // More conservative estimates
 }
 
@@ -88,7 +95,7 @@ export function splitTextIntoChunks(
   if (isABI(text)) {
     limits = TOKEN_LIMITS.ABI;
     return splitABIContent(text, limits);
-  } else if (/[{}\[\]()]/g.test(text)) {
+  } else if (/[{}[\]()]/g.test(text)) {
     limits = TOKEN_LIMITS.CODE;
   }
 
@@ -195,7 +202,7 @@ export function splitTextIntoChunks(
 
   // Handle regular text content
   if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) {
-    const segments = text.split(/(?<=\.|\?|\!)\s+/);
+    const segments = text.split(/(?<=\.|!|\?)\s+/);
     let currentChunk = "";
     let currentSize = 0;
 
@@ -300,6 +307,10 @@ export async function generateEmbeddingWithRetry(
       const batchPromises = batch.map((chunk) =>
         withRetry(async () => {
           if (!chunk) return null;
+          if (!openai) {
+            console.debug("[OpenAI] ABI database not configured, skipping chunk embedding");
+            return null;
+          }
           const response = await openai.embeddings.create({
             model: "text-embedding-3-small",
             input: chunk,
@@ -327,6 +338,10 @@ export async function generateEmbeddingWithRetry(
     return embeddings;
   } else {
     const embedding = await withRetry(async () => {
+      if (!openai) {
+        console.debug("[OpenAI] ABI database not configured, skipping embedding");
+        return null;
+      }
       const response = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: text,

@@ -1,13 +1,80 @@
-import { Pool, PoolClient } from "pg";
+import { Pool, PoolClient, QueryResult } from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 let poolInstance: Pool | null = null;
 
+// Create a mock pool that implements the Pool interface but does nothing
+const createMockPool = (): Pool => {
+  const mockQueryResult: QueryResult = {
+    command: "",
+    rowCount: 0,
+    oid: 0,
+    fields: [],
+    rows: [],
+  };
+
+  const mockClient = {
+    query: async () => mockQueryResult,
+    release: () => {},
+    connect: async () => {},
+    on: () => mockClient,
+    off: () => mockClient,
+    removeListener: () => mockClient,
+    removeAllListeners: () => mockClient,
+    once: () => mockClient,
+    addListener: () => mockClient,
+    emit: () => false,
+    eventNames: () => [],
+    getMaxListeners: () => 0,
+    listenerCount: () => 0,
+    listeners: () => [],
+    prependListener: () => mockClient,
+    prependOnceListener: () => mockClient,
+    rawListeners: () => [],
+    setMaxListeners: () => mockClient,
+    queryStream: () => ({ on: () => {}, destroy: () => {} }),
+    ref: () => mockClient,
+    unref: () => mockClient,
+    escapeLiteral: (str: string) => str,
+    escapeIdentifier: (str: string) => str,
+    cancel: async () => {},
+    pauseDrain: () => {},
+    resumeDrain: () => {},
+  } as unknown as PoolClient;
+
+  const mockPool = {
+    connect: async () => mockClient,
+    end: async () => {},
+    query: async () => mockQueryResult,
+    on: () => mockPool,
+    off: () => mockPool,
+    removeListener: () => mockPool,
+    removeAllListeners: () => mockPool,
+    once: () => mockPool,
+    addListener: () => mockPool,
+    emit: () => false,
+    eventNames: () => [],
+    getMaxListeners: () => 0,
+    listenerCount: () => 0,
+    listeners: () => [],
+    prependListener: () => mockPool,
+    prependOnceListener: () => mockPool,
+    rawListeners: () => [],
+    setMaxListeners: () => mockPool,
+    totalCount: 0,
+    idleCount: 0,
+    waitingCount: 0,
+  } as unknown as Pool;
+
+  return mockPool;
+};
+
 const createPool = (): Pool => {
   if (!process.env.ABI_DATABASE_URL) {
-    throw new Error("ABI_DATABASE_URL environment variable is not defined");
+    console.warn("ABI_DATABASE_URL not defined - ABI storage will be disabled");
+    return createMockPool();
   }
 
   const pool = new Pool({
@@ -17,7 +84,7 @@ const createPool = (): Pool => {
     },
   });
 
-  pool.on("error", (err, client) => {
+  pool.on("error", (err) => {
     console.error("Unexpected error on idle client:", {
       error: err.message,
       stack: err.stack,
@@ -71,6 +138,11 @@ export const executeQuery = async <T>(
 };
 
 const testConnection = async (): Promise<void> => {
+  if (!process.env.ABI_DATABASE_URL) {
+    console.warn("Skipping PostgreSQL connection test - ABI_DATABASE_URL not defined");
+    return;
+  }
+
   try {
     await executeQuery(async (client) => {
       const result = await client.query("SELECT NOW()");
