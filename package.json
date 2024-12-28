@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "setup-db": "NODE_OPTIONS='--loader ts-node/esm' ts-node -r dotenv/config scripts/setupDatabase.ts",
-    "dev": "NODE_OPTIONS='--max-old-space-size=32768' ponder dev -v",
+    "dev": "NODE_OPTIONS='--max-old-space-size=32768' ponder dev -vv",
     "start": "NODE_OPTIONS='--max-old-space-size=32768' ponder start --schema $RAILWAY_DEPLOYMENT_ID",
     "codegen": "NODE_OPTIONS='--max-old-space-size=32768' ponder codegen",
     "serve": "NODE_OPTIONS='--max-old-space-size=32768' ponder serve",

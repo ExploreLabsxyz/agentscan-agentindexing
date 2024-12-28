@@ -108,20 +108,19 @@ export const Component = onchainTable(
   "component",
   (t) => ({
     id: t.text().primaryKey(),
-    instance: t.text().notNull(),
+    name: t.text(),
+    description: t.text(),
+    image: t.text(),
+    codeUri: t.text(),
     blockNumber: t.integer().notNull(),
     timestamp: t.integer().notNull(),
     metadataHash: t.text(),
     metadataURI: t.text(),
     packageHash: t.text(),
-    name: t.text(),
-    description: t.text(),
-    image: t.text(),
-    codeUri: t.text(),
+    operator: t.text(),
   }),
   (table) => ({
     idx: index().on(table.id),
-    instanceIdx: index().on(table.instance),
     packageHashIdx: index().on(table.packageHash),
     metadataHashIdx: index().on(table.metadataHash),
     timestampIdx: index().on(table.timestamp),
@@ -130,6 +129,7 @@ export const Component = onchainTable(
     descriptionIdx: index().on(table.description),
     imageIdx: index().on(table.image),
     codeUriIdx: index().on(table.codeUri),
+    operatorIdx: index().on(table.operator),
   })
 );
 

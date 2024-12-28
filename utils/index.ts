@@ -65,9 +65,12 @@ const redisClient = process.env.REDIS_URL
 // Only attempt to connect if we're using a real Redis client
 if (process.env.REDIS_URL) {
   redisClient.connect().catch((error) => {
-    console.warn("[Redis] Failed to connect to Redis, caching will be disabled:", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    console.warn(
+      "[Redis] Failed to connect to Redis, caching will be disabled:",
+      {
+        error: error instanceof Error ? error.message : "Unknown error",
+      }
+    );
   });
 } else {
   console.debug("[Redis] Redis URL not configured, caching will be disabled");
@@ -105,6 +108,9 @@ export const CONTRACT_NAMES = [
   "MainnetStaking",
   "GnosisRegistry",
   "BaseRegistry",
+  "OptimismRegistry",
+  "ArbitrumRegistry",
+  "PolygonRegistry",
 ] as const;
 
 export const getChainId = (chain: string): number => {
@@ -674,7 +680,7 @@ export async function checkAndStoreAbi(
           if (process.env.REDIS_URL && redisClient.isReady) {
             void redisClient.set(abidataRedisKey, JSON.stringify(null), {
               EX: NEGATIVE_RESPONSE_TTL,
-              NX: true
+              NX: true,
             });
             console.debug(
               `[ABI] Cached negative response for ${formattedAddress} with ${NEGATIVE_RESPONSE_TTL}s TTL`
@@ -702,9 +708,11 @@ export async function checkAndStoreAbi(
         if (process.env.REDIS_URL && redisClient.isReady) {
           void redisClient.set(abidataRedisKey, processedAbi, {
             EX: TTL,
-            NX: true
+            NX: true,
           });
-          console.debug(`[ABI] Cached ABI for ${formattedAddress} with ${TTL}s TTL`);
+          console.debug(
+            `[ABI] Cached ABI for ${formattedAddress} with ${TTL}s TTL`
+          );
         }
       } catch (redisCacheError) {
         console.warn(

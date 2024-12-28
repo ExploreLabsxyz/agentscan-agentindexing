@@ -5,6 +5,7 @@ import {
   ServiceAgent,
   ComponentAgent,
   AgentInstance,
+  Component,
 } from "ponder:schema";
 import {
   CONTRACT_NAMES,
@@ -145,6 +146,83 @@ ponder.on(`MainnetAgentRegistry:Transfer`, async ({ event, context }) => {
         .onConflictDoUpdate({ operator: event.args.to.toString() });
     } catch (e) {
       console.error("Error inserting new agent:", e);
+    }
+  }
+});
+
+ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
+  const componentId = event.args.unitId.toString();
+  console.log(
+    `Handling MainnetComponentRegistry:CreateUnit for component ${componentId}`
+  );
+  const [metadataJson] = await Promise.all([
+    fetchMetadata(event.args.unitHash, componentId, "component"),
+  ]);
+
+  if (!metadataJson) {
+    console.warn(`No metadata found for component ${componentId}`);
+    return;
+  }
+
+  const updateData = {
+    id: componentId,
+    name: metadataJson.name,
+    description: metadataJson.description,
+    image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
+    codeUri: metadataJson.codeUri
+      ? transformIpfsUrl(metadataJson.codeUri)
+      : null,
+    blockNumber: Number(event.block.number),
+    timestamp: Number(event.block.timestamp),
+    packageHash: metadataJson.packageHash,
+    metadataHash: event.args.unitHash,
+    metadataURI: metadataJson.metadataURI,
+  };
+
+  await context.db
+    .insert(Component)
+    .values(updateData)
+    .onConflictDoUpdate({
+      name: updateData.name,
+      description: updateData.description,
+      image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
+      codeUri: updateData.codeUri
+        ? transformIpfsUrl(updateData?.codeUri)
+        : null,
+    });
+});
+
+ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
+  const componentId = event.args.id.toString();
+  console.log(
+    `Handling MainnetComponentRegistry:Transfer for component ${componentId}`
+  );
+
+  try {
+    await context.db
+      .update(Component, { id: componentId })
+      .set({ operator: event.args.to.toString() });
+  } catch (e) {
+    console.error("Error in ComponentRegistry:Transfer:", e);
+    try {
+      await context.db
+        .insert(Component)
+        .values({
+          id: componentId,
+          operator: event.args.to.toString(),
+          name: null,
+          description: null,
+          image: null,
+          codeUri: null,
+          blockNumber: Number(event.block.number),
+          timestamp: Number(event.block.timestamp),
+          packageHash: null,
+          metadataHash: null,
+          metadataURI: null,
+        })
+        .onConflictDoUpdate({ operator: event.args.to.toString() });
+    } catch (e) {
+      console.error("Error inserting new component:", e);
     }
   }
 });
