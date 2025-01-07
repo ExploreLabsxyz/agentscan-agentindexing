@@ -586,30 +586,21 @@ const calculateRawApy = (
   timeForEmissions: bigint,
   livenessPeriod: bigint
 ): number => {
-  if (totalStaked === 0n) {
+  if (totalStaked === 0n || timeForEmissions === 0n || livenessPeriod === 0n) {
     return 0;
   }
 
-  const SECONDS_PER_YEAR = 31536000n; // 365 * 24 * 60 * 60
-  const PRECISION = 10000n; // For better decimal precision
-
-  // Calculate rewards for a single period
-  // A period consists of:
-  // 1. timeForEmissions - where rewards are accumulated
-  // 2. livenessPeriod - where the service is checked for activity
   const periodLength = timeForEmissions + livenessPeriod;
+  if (periodLength === 0n) {
+    return 0;
+  }
 
-  // Calculate number of full periods in a year
+  const SECONDS_PER_YEAR = 31536000n;
+  const PRECISION = 10000n;
+
   const periodsPerYear = SECONDS_PER_YEAR / periodLength;
-
-  // Calculate rewards for active time in a year
-  // Note: Rewards are only accumulated during timeForEmissions, not during livenessPeriod
   const activeTimePerYear = periodsPerYear * timeForEmissions;
-
-  // Calculate potential annual rewards assuming all liveness checks pass
   const annualRewards = (rewardsPerSecond * activeTimePerYear * PRECISION) / 1n;
-
-  // Calculate APY percentage
   const apy = Number((annualRewards * 100n) / totalStaked) / Number(PRECISION);
 
   return Math.round(apy * 100) / 100;
@@ -637,11 +628,30 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
       );
       return;
     }
+    try {
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        amount: (existingPosition[0]?.amount ?? 0n) + event.args.amount,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    } catch (e) {
+      console.error(`Error updating deposit for ${instanceAddress}:`, e);
+    }
 
-    await context.db.update(StakingPosition, { id: positionId }).set({
-      amount: (existingPosition[0]?.amount ?? 0n) + event.args.amount,
-      lastUpdateTimestamp: Number(event.block.timestamp),
+    const instance = await context.db.find(StakingInstance, {
+      id: instanceAddress,
     });
+    if (instance) {
+      const newApy = calculateRawApy(
+        instance.rewardsPerSecond ?? 0n,
+        instance.totalStaked ?? 0n,
+        BigInt(instance.timeForEmissions ?? 0),
+        BigInt(instance.livenessPeriod ?? 0)
+      );
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        rawApy: newApy,
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    }
   } catch (e) {
     console.error(`Error updating deposit for ${instanceAddress}:`, e);
   }
