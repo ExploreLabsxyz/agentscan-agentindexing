@@ -582,23 +582,36 @@ CONTRACT_NAMES.forEach((contractName) => {
  */
 const calculateRawApy = (
   rewardsPerSecond: bigint,
-  totalStaked: bigint
+  totalStaked: bigint,
+  timeForEmissions: bigint,
+  livenessPeriod: bigint
 ): number => {
   if (totalStaked === 0n) {
     return 0;
   }
 
-  // Use BigInt for initial calculations to maintain precision
   const SECONDS_PER_YEAR = 31536000n; // 365 * 24 * 60 * 60
   const PRECISION = 10000n; // For better decimal precision
 
-  // Calculate annual rewards while maintaining precision
-  const annualRewards = (rewardsPerSecond * SECONDS_PER_YEAR * PRECISION) / 1n;
+  // Calculate rewards for a single period
+  // A period consists of:
+  // 1. timeForEmissions - where rewards are accumulated
+  // 2. livenessPeriod - where the service is checked for activity
+  const periodLength = timeForEmissions + livenessPeriod;
+
+  // Calculate number of full periods in a year
+  const periodsPerYear = SECONDS_PER_YEAR / periodLength;
+
+  // Calculate rewards for active time in a year
+  // Note: Rewards are only accumulated during timeForEmissions, not during livenessPeriod
+  const activeTimePerYear = periodsPerYear * timeForEmissions;
+
+  // Calculate potential annual rewards assuming all liveness checks pass
+  const annualRewards = (rewardsPerSecond * activeTimePerYear * PRECISION) / 1n;
 
   // Calculate APY percentage
   const apy = Number((annualRewards * 100n) / totalStaked) / Number(PRECISION);
 
-  // Return APY with reasonable precision
   return Math.round(apy * 100) / 100;
 };
 
@@ -696,7 +709,9 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          newTotalStaked
+          newTotalStaked,
+          BigInt(instance.timeForEmissions ?? 0),
+          BigInt(instance.livenessPeriod ?? 0)
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
@@ -741,7 +756,9 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          newTotalStaked
+          newTotalStaked,
+          BigInt(instance.timeForEmissions ?? 0),
+          BigInt(instance.livenessPeriod ?? 0)
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
@@ -819,7 +836,9 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
         epochLength: BigInt(event.args.epochLength.toString()),
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          instance.totalStaked ?? 0n
+          instance.totalStaked ?? 0n,
+          BigInt(instance.timeForEmissions ?? 0),
+          BigInt(instance.livenessPeriod ?? 0)
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
