@@ -369,7 +369,6 @@ export const AgentFromTransaction = onchainTable(
 // Service Relations
 export const ServiceRelations = relations(Service, ({ many }) => ({
   serviceAgents: many(ServiceAgent),
-  stakingPositions: many(StakingPosition),
 }));
 
 export const ServiceAgentRelations = relations(ServiceAgent, ({ one }) => ({
@@ -495,10 +494,6 @@ export const StakingPositionRelations = relations(
     stakingInstance: one(StakingInstance, {
       fields: [StakingPosition.stakingInstanceId],
       references: [StakingInstance.id],
-    }),
-    service: one(Service, {
-      fields: [StakingPosition.serviceId],
-      references: [Service.id],
     }),
   })
 );
