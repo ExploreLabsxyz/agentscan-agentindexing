@@ -6,6 +6,8 @@ import {
   ComponentAgent,
   AgentInstance,
   Component,
+  StakingInstance,
+  StakingPosition,
 } from "ponder:schema";
 import {
   CONTRACT_NAMES,
@@ -15,7 +17,8 @@ import {
   getChainName,
   transformIpfsUrl,
 } from "../utils";
-
+import { StakingTokenAbi } from "../abis/StakingToken";
+import { eq } from "ponder";
 const createDefaultService = (
   serviceId: string,
   chain: string,
@@ -568,4 +571,271 @@ CONTRACT_NAMES.forEach((contractName) => {
       }
     }
   });
+});
+
+/**
+ * Calculates raw APY for a staking position
+ * @param rewardsPerSecond - Rewards in OLAS per second (in wei)
+ * @param epochLength - Length of epoch in seconds
+ * @param totalStaked - Total amount staked (in wei)
+ * @returns APY as a decimal (e.g. 0.15 for 15% APY)
+ */
+const calculateRawApy = (
+  rewardsPerSecond: bigint,
+  epochLength: bigint,
+  totalStaked: bigint
+): number => {
+  if (totalStaked === 0n) return 0;
+
+  // Calculate rewards for one epoch
+  const rewardsPerEpoch = rewardsPerSecond * epochLength;
+
+  // Calculate rewards for one year
+  const SECONDS_PER_YEAR = 31536000n; // 365 * 24 * 60 * 60
+  const epochsPerYear = SECONDS_PER_YEAR / epochLength;
+  const rewardsPerYear = rewardsPerEpoch * epochsPerYear;
+
+  // Convert to decimal numbers for division
+  const annualRewards = Number(rewardsPerYear) / 1e18; // Convert from wei to OLAS
+  const stakedAmount = Number(totalStaked) / 1e18; // Convert from wei to OLAS
+
+  // Calculate APY
+  return annualRewards / stakedAmount;
+};
+
+// Handle deposits
+ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const depositorAddress = event.args.sender.toLowerCase();
+  const positionId = `${instanceAddress}-${depositorAddress}`;
+
+  try {
+    // Update staking instance total
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      totalStaked: event.args.balance,
+      lastApyUpdate: Number(event.block.timestamp),
+    });
+
+    // Update or create staking position
+    await context.db
+      .insert(StakingPosition)
+      .values({
+        id: positionId,
+        stakingInstanceId: instanceAddress,
+        stakerAddress: depositorAddress,
+        amount: event.args.amount ?? 0n,
+        lastStakeTimestamp: Number(event.block.timestamp),
+        lastUpdateTimestamp: Number(event.block.timestamp),
+        isActive: true,
+      })
+      .onConflictDoUpdate((row) => ({
+        amount: (row?.amount ?? 0n) + event.args.amount,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      }));
+  } catch (e) {
+    console.error(`Error updating deposit for ${instanceAddress}:`, e);
+  }
+});
+
+// Handle service staking
+ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const stakerAddress = event.args.owner.toLowerCase();
+  const positionId = `${instanceAddress}-${stakerAddress}`;
+  const serviceId = event.args.serviceId.toString();
+
+  try {
+    // Update staking instance
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      isActive: true,
+      lastApyUpdate: Number(event.block.timestamp),
+    });
+
+    // Update staking position
+    const position = await context.db.find(StakingPosition, { id: positionId });
+
+    if (position) {
+      const updatedServiceIds = [
+        ...new Set([...(position.serviceIds ?? []), serviceId]),
+      ];
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        isActive: true,
+        serviceIds: updatedServiceIds,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    }
+  } catch (e) {
+    console.error(`Error handling service staking for ${instanceAddress}:`, e);
+  }
+});
+
+// Handle service unstaking
+ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const stakerAddress = event.args.owner.toLowerCase();
+  const positionId = `${instanceAddress}-${stakerAddress}`;
+  const serviceId = event.args.serviceId.toString();
+
+  try {
+    const instance = await context.db.find(StakingInstance, {
+      id: instanceAddress,
+    });
+    const position = await context.db.find(StakingPosition, { id: positionId });
+
+    if (instance && position) {
+      const newTotalStaked = (instance.totalStaked ?? 0n) - event.args.reward;
+      const newAmount = (position.amount ?? 0n) - event.args.reward;
+      const updatedServiceIds = position.serviceIds?.filter(
+        (id) => id !== serviceId
+      );
+
+      // Update staking instance
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        totalStaked: newTotalStaked,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          instance.epochLength ?? 0n,
+          newTotalStaked
+        ),
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+
+      // Update staking position
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        amount: newAmount,
+        serviceIds: updatedServiceIds,
+        rewards: (position.rewards ?? 0n) + event.args.reward,
+        isActive: (updatedServiceIds?.length ?? 0) > 0,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    }
+  } catch (e) {
+    console.error(
+      `Error handling service unstaking for ${instanceAddress}:`,
+      e
+    );
+  }
+});
+
+// Handle withdrawals
+ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const withdrawerAddress = event.args.to.toLowerCase();
+  const positionId = `${instanceAddress}-${withdrawerAddress}`;
+
+  try {
+    const instance = await context.db.find(StakingInstance, {
+      id: instanceAddress,
+    });
+    const position = await context.db.find(StakingPosition, { id: positionId });
+
+    if (instance && position) {
+      const newTotalStaked = (instance.totalStaked ?? 0n) - event.args.amount;
+      const newAmount = (position.amount ?? 0n) - event.args.amount;
+
+      // Update staking instance
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        totalStaked: newTotalStaked,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          instance.epochLength ?? 0n,
+          newTotalStaked
+        ),
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+
+      // Update staking position
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        amount: newAmount,
+        isActive: newAmount > 0n,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    }
+  } catch (e) {
+    console.error(`Error handling withdrawal for ${instanceAddress}:`, e);
+  }
+});
+
+// Handle reward claims
+ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const claimerAddress = event.args.owner.toLowerCase();
+  const positionId = `${instanceAddress}-${claimerAddress}`;
+
+  try {
+    const position = await context.db.find(StakingPosition, { id: positionId });
+
+    if (position) {
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        rewards: (position.rewards ?? 0n) + event.args.reward,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    }
+
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      lastApyUpdate: Number(event.block.timestamp),
+    });
+  } catch (e) {
+    console.error(`Error handling reward claim for ${instanceAddress}:`, e);
+  }
+});
+
+// Handle checkpoints which might update rewards
+ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+
+  try {
+    const instance = await context.db.find(StakingInstance, {
+      id: instanceAddress,
+    });
+
+    if (instance) {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        epochLength: BigInt(event.args.epochLength.toString()),
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          BigInt(event.args.epochLength.toString()),
+          instance.totalStaked ?? 0n
+        ),
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    }
+  } catch (e) {
+    console.error(`Error handling checkpoint for ${instanceAddress}:`, e);
+  }
+});
+
+// Handle service inactivity warnings
+ponder.on(
+  "StakingContracts:ServiceInactivityWarning",
+  async ({ event, context }) => {
+    const instanceAddress = event.log.address.toLowerCase();
+
+    try {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    } catch (e) {
+      console.error(
+        `Error handling inactivity warning for ${instanceAddress}:`,
+        e
+      );
+    }
+  }
+);
+
+// Handle service evictions
+ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+
+  try {
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      lastApyUpdate: Number(event.block.timestamp),
+    });
+  } catch (e) {
+    console.error(
+      `Error handling services eviction for ${instanceAddress}:`,
+      e
+    );
+  }
 });

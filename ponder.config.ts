@@ -4,6 +4,8 @@ import { getAbiItem, http, parseAbiItem } from "viem";
 import { ServiceRegistryABI } from "./abis/ServiceRegistryABI";
 import { AgentRegistryABI } from "./abis/AgentRegistry";
 import { ComponentRegistryABI } from "./abis/ComponentRegistry";
+import { StakingFactoryABI } from "./abis/StakingFactoryABI";
+import { StakingTokenAbi } from "./abis/StakingToken";
 
 export default createConfig({
   networks: {
@@ -87,6 +89,106 @@ export default createConfig({
       abi: ComponentRegistryABI,
       address: "0x15bd56669F57192a97dF41A2aa8f4403e9491776",
       startBlock: 15178253,
+    },
+    StakingFactoryContracts: {
+      abi: StakingFactoryABI,
+      network: {
+        mainnet: {
+          address: "0xEBdde456EA288b49f7D5975E7659bA1Ccf607efc",
+          startBlock: 20342524,
+        },
+        polygon: {
+          address: "0x46C0D07F55d4F9B5Eed2Fc9680B5953e5fd7b461",
+          startBlock: 59560456,
+        },
+        gnosis: {
+          address: "0xb0228CA253A88Bc8eb4ca70BCAC8f87b381f4700",
+          startBlock: 35047282,
+        },
+        arbitrum: {
+          address: "0xEB5638eefE289691EcE01943f768EDBF96258a80",
+          startBlock: 233883523,
+        },
+        optimism: {
+          address: "0xa45E64d13A30a51b91ae0eb182e88a40e9b18eD8",
+          startBlock: 122903952,
+        },
+        base: {
+          address: "0x1cEe30D08943EB58EFF84DD1AB44a6ee6FEff63a",
+          startBlock: 17310019,
+        },
+      },
+    },
+    StakingContracts: {
+      abi: StakingTokenAbi,
+      network: {
+        mainnet: {
+          address: factory({
+            address: "0xEBdde456EA288b49f7D5975E7659bA1Ccf607efc",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 20342524,
+        },
+        polygon: {
+          address: factory({
+            address: "0x46C0D07F55d4F9B5Eed2Fc9680B5953e5fd7b461",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 59560456,
+        },
+        gnosis: {
+          address: factory({
+            address: "0xb0228CA253A88Bc8eb4ca70BCAC8f87b381f4700",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 35047282,
+        },
+        arbitrum: {
+          address: factory({
+            address: "0xEB5638eefE289691EcE01943f768EDBF96258a80",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 233883523,
+        },
+        optimism: {
+          address: factory({
+            address: "0xa45E64d13A30a51b91ae0eb182e88a40e9b18eD8",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 122903952,
+        },
+        base: {
+          address: factory({
+            address: "0x1cEe30D08943EB58EFF84DD1AB44a6ee6FEff63a",
+            event: getAbiItem({
+              abi: StakingFactoryABI,
+              name: "InstanceCreated",
+            }),
+            parameter: "instance",
+          }),
+          startBlock: 17310019,
+        },
+      },
     },
   },
   database: {

@@ -133,6 +133,78 @@ export const Component = onchainTable(
   })
 );
 
+export const StakingToken = onchainTable(
+  "staking_token",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chain: t.text().notNull(),
+    implementation: t.text().notNull(),
+    deployer: t.text().notNull(),
+    blockNumber: t.integer().notNull(),
+    timestamp: t.integer().notNull(),
+    isEnabled: t.boolean().notNull(),
+  }),
+  (table) => ({
+    chainIdx: index().on(table.chain),
+    implementationIdx: index().on(table.implementation),
+    deployerIdx: index().on(table.deployer),
+    timestampIdx: index().on(table.timestamp),
+    blockNumberIdx: index().on(table.blockNumber),
+  })
+);
+
+export const StakingInstance = onchainTable(
+  "staking_instance",
+  (t) => ({
+    id: t.text().primaryKey(),
+    chain: t.text().notNull(),
+    factory: t.text().notNull(),
+    implementation: t.text().notNull(),
+    deployer: t.text().notNull(),
+    blockNumber: t.integer().notNull(),
+    timestamp: t.integer().notNull(),
+    totalStaked: t.bigint().default(0n),
+    stakingToken: t.text(),
+    rewardToken: t.text(),
+    isActive: t.boolean().default(true),
+    rewardsPerSecond: t.bigint().default(0n),
+    epochLength: t.bigint().default(0n),
+    rawApy: t.real().default(0),
+    lastApyUpdate: t.integer().default(0),
+    agentIds: t.text().array(),
+  }),
+  (table) => ({
+    chainIdx: index().on(table.chain),
+    factoryIdx: index().on(table.factory),
+    implementationIdx: index().on(table.implementation),
+    deployerIdx: index().on(table.deployer),
+    timestampIdx: index().on(table.timestamp),
+    blockNumberIdx: index().on(table.blockNumber),
+    apyIdx: index().on(table.rawApy),
+  })
+);
+
+export const StakingPosition = onchainTable(
+  "staking_position",
+  (t) => ({
+    id: t.text().primaryKey(),
+    stakingInstanceId: t.text().notNull(),
+    stakerAddress: t.text().notNull(),
+    amount: t.bigint().default(0n),
+    lastStakeTimestamp: t.integer().notNull(),
+    lastUpdateTimestamp: t.integer().notNull(),
+    isActive: t.boolean().default(false),
+    serviceIds: t.text().array().default([]),
+    rewards: t.bigint().default(0n),
+  }),
+  (table) => ({
+    stakingInstanceIdx: index().on(table.stakingInstanceId),
+    stakerAddressIdx: index().on(table.stakerAddress),
+    timestampIdx: index().on(table.lastUpdateTimestamp),
+    isActiveIdx: index().on(table.isActive),
+  })
+);
+
 // ============================================================================
 // RELATIONSHIP TABLES
 // ============================================================================
@@ -420,3 +492,24 @@ export const AgentInstanceRelations = relations(AgentInstance, ({ one }) => ({
     references: [Agent.id],
   }),
 }));
+
+export const StakingInstanceRelations = relations(
+  StakingInstance,
+  ({ one, many }) => ({
+    factory: one(StakingToken, {
+      fields: [StakingInstance.factory],
+      references: [StakingToken.id],
+    }),
+    positions: many(StakingPosition),
+  })
+);
+
+export const StakingPositionRelations = relations(
+  StakingPosition,
+  ({ one }) => ({
+    stakingInstance: one(StakingInstance, {
+      fields: [StakingPosition.stakingInstanceId],
+      references: [StakingInstance.id],
+    }),
+  })
+);
