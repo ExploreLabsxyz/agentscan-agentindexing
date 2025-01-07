@@ -688,17 +688,25 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
     });
 
     const positionId = `${instanceAddress}-${event.args.serviceId}-${event.args.owner}`;
-    await context.db.insert(StakingPosition).values({
-      id: positionId,
-      stakingInstanceId: instanceAddress,
-      serviceId: event.args.serviceId.toString(),
-      stakerAddress: event.args.owner,
-      multisig: event.args.multisig,
-      amount: instance?.minStakingDeposit ?? 0n,
-      lastStakeTimestamp: Number(event.block.timestamp),
-      lastUpdateTimestamp: Number(event.block.timestamp),
-      status: "active",
-    });
+    await context.db
+      .insert(StakingPosition)
+      .values({
+        id: positionId,
+        stakingInstanceId: instanceAddress,
+        serviceId: event.args.serviceId.toString(),
+        stakerAddress: event.args.owner,
+        multisig: event.args.multisig,
+        amount: instance?.minStakingDeposit ?? 0n,
+        lastStakeTimestamp: Number(event.block.timestamp),
+        lastUpdateTimestamp: Number(event.block.timestamp),
+        status: "active",
+      })
+      .onConflictDoUpdate({
+        amount: instance?.minStakingDeposit ?? 0n,
+        lastStakeTimestamp: Number(event.block.timestamp),
+        lastUpdateTimestamp: Number(event.block.timestamp),
+        status: "active",
+      });
   }
 });
 
