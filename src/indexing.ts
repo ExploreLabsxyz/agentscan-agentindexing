@@ -837,7 +837,6 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
           )
         );
 
-      console.log(positions);
       // Update each position's rewards
       for (const position of positions) {
         const newRewards = calculateNewRewards(position, instance, event);
