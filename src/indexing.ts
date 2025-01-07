@@ -641,14 +641,14 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
       id: instanceAddress,
     });
     if (instance) {
-      const newApy = calculateRawApy(
-        instance.rewardsPerSecond ?? 0n,
-        instance.totalStaked ?? 0n,
-        BigInt(instance.timeForEmissions ?? 0),
-        BigInt(instance.livenessPeriod ?? 0)
-      );
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        rawApy: newApy,
+        totalStaked: event.args.balance,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          event.args.balance,
+          BigInt(instance.timeForEmissions || 0),
+          BigInt(instance.livenessPeriod || 0)
+        ),
         lastApyUpdate: Number(event.block.timestamp),
       });
     }
