@@ -605,30 +605,27 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
   const depositorAddress = event.args.sender.toLowerCase();
   const positionId = `${instanceAddress}-${depositorAddress}`;
 
-  console.log(`Handling deposit for ${instanceAddress}`);
-  console.log(`Depositor: ${depositorAddress}`);
-
   try {
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
       totalStaked: event.args.balance,
       lastApyUpdate: Number(event.block.timestamp),
     });
 
-    await context.db
-      .insert(StakingPosition)
-      .values({
-        id: positionId,
-        stakingInstanceId: instanceAddress,
-        stakerAddress: depositorAddress,
-        amount: event.args.amount ?? 0n,
-        lastStakeTimestamp: Number(event.block.timestamp),
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        isActive: true,
-      })
-      .onConflictDoUpdate((row) => ({
-        amount: (row?.amount ?? 0n) + event.args.amount,
-        lastUpdateTimestamp: Number(event.block.timestamp),
-      }));
+    const existingPosition = await context.db.sql
+      .select()
+      .from(StakingPosition)
+      .where(eq(StakingPosition.id, positionId));
+    if (!existingPosition) {
+      console.warn(
+        `No staking position found for ${positionId}, skipping deposit`
+      );
+      return;
+    }
+
+    await context.db.update(StakingPosition, { id: positionId }).set({
+      amount: (existingPosition[0]?.amount ?? 0n) + event.args.amount,
+      lastUpdateTimestamp: Number(event.block.timestamp),
+    });
   } catch (e) {
     console.error(`Error updating deposit for ${instanceAddress}:`, e);
   }
@@ -638,46 +635,53 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
 ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
   const stakerAddress = event.args.owner.toLowerCase();
-  const positionId = `${instanceAddress}-${stakerAddress}`;
-  const serviceId = event.args.serviceId.toString();
-
-  console.log(`Handling service staking for ${instanceAddress}`);
-  console.log(`Staker: ${stakerAddress}`);
-  console.log(`Service: ${serviceId}`);
+  const multisig = event.args.multisig.toLowerCase();
+  const chainServiceId = createChainScopedId(
+    context.network.name,
+    event.args.serviceId.toString()
+  );
+  const positionId = `${instanceAddress}-${chainServiceId}`;
 
   try {
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      isActive: true,
-      lastApyUpdate: Number(event.block.timestamp),
-    });
-
-    // Update staking position
-    const position = await context.db.find(StakingPosition, { id: positionId });
-
-    if (position) {
-      const updatedServiceIds = [
-        ...new Set([...(position.serviceIds ?? []), serviceId]),
-      ];
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        isActive: true,
-        serviceIds: updatedServiceIds,
+    await context.db
+      .insert(StakingPosition)
+      .values({
+        id: positionId,
+        stakingInstanceId: instanceAddress,
+        serviceId: chainServiceId,
+        stakerAddress: stakerAddress,
+        multisig: multisig,
+        lastStakeTimestamp: Number(event.block.timestamp),
         lastUpdateTimestamp: Number(event.block.timestamp),
+        isActive: true,
+        amount: 0n,
+        rewards: 0n,
+        totalRewards: 0n,
+        claimedRewards: 0n,
+      })
+      .onConflictDoUpdate({
+        target: [StakingPosition.id],
+        set: {
+          isActive: true,
+          lastUpdateTimestamp: Number(event.block.timestamp),
+        },
       });
-    }
   } catch (e) {
-    console.error(`Error handling service staking for ${instanceAddress}:`, e);
+    console.error(`Error handling service staking for ${chainServiceId}:`, e);
   }
 });
 
 // Handle service unstaking
 ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
-  const stakerAddress = event.args.owner.toLowerCase();
-  const positionId = `${instanceAddress}-${stakerAddress}`;
-  const serviceId = event.args.serviceId.toString();
+  const chainServiceId = createChainScopedId(
+    context.network.name,
+    event.args.serviceId.toString()
+  );
+  const positionId = `${instanceAddress}-${chainServiceId}`;
+
   console.log(`Handling service unstaking for ${instanceAddress}`);
-  console.log(`Staker: ${stakerAddress}`);
-  console.log(`Service: ${serviceId}`);
+  console.log(`Service: ${chainServiceId}`);
 
   try {
     const instance = await context.db.find(StakingInstance, {
@@ -687,10 +691,6 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
 
     if (instance && position) {
       const newTotalStaked = (instance.totalStaked ?? 0n) - event.args.reward;
-      const newAmount = (position.amount ?? 0n) - event.args.reward;
-      const updatedServiceIds = position.serviceIds?.filter(
-        (id) => id !== serviceId
-      );
 
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         totalStaked: newTotalStaked,
@@ -703,10 +703,8 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
 
       // Update staking position
       await context.db.update(StakingPosition, { id: positionId }).set({
-        amount: newAmount,
-        serviceIds: updatedServiceIds,
+        isActive: false,
         rewards: (position.rewards ?? 0n) + event.args.reward,
-        isActive: (updatedServiceIds?.length ?? 0) > 0,
         lastUpdateTimestamp: Number(event.block.timestamp),
       });
     }
@@ -1038,8 +1036,11 @@ ponder.on(
 
 ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
-  const stakerAddress = event.args.owner.toLowerCase();
-  const positionId = `${instanceAddress}-${stakerAddress}`;
+  const chainServiceId = createChainScopedId(
+    context.network.name,
+    event.args.serviceId.toString()
+  );
+  const positionId = `${instanceAddress}-${chainServiceId}`;
 
   try {
     const position = await context.db.find(StakingPosition, { id: positionId });

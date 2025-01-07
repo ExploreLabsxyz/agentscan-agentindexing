@@ -176,19 +176,22 @@ export const StakingPosition = onchainTable(
   (t) => ({
     id: t.text().primaryKey(),
     stakingInstanceId: t.text().notNull(),
+    serviceId: t.text().notNull(),
     stakerAddress: t.text().notNull(),
+    multisig: t.text().notNull(),
     amount: t.bigint().default(0n),
     lastStakeTimestamp: t.integer().notNull(),
     lastUpdateTimestamp: t.integer().notNull(),
     isActive: t.boolean().default(false),
-    serviceIds: t.text().array().default([]),
     rewards: t.bigint().default(0n),
     totalRewards: t.bigint().default(0n),
     claimedRewards: t.bigint().default(0n),
   }),
   (table) => ({
     stakingInstanceIdx: index().on(table.stakingInstanceId),
+    serviceIdIdx: index().on(table.serviceId),
     stakerAddressIdx: index().on(table.stakerAddress),
+    multisigIdx: index().on(table.multisig),
     timestampIdx: index().on(table.lastUpdateTimestamp),
     isActiveIdx: index().on(table.isActive),
   })
@@ -363,6 +366,7 @@ export const AgentFromTransaction = onchainTable(
 // Service Relations
 export const ServiceRelations = relations(Service, ({ many }) => ({
   serviceAgents: many(ServiceAgent),
+  stakingPositions: many(StakingPosition),
 }));
 
 export const ServiceAgentRelations = relations(ServiceAgent, ({ one }) => ({
@@ -488,6 +492,10 @@ export const StakingPositionRelations = relations(
     stakingInstance: one(StakingInstance, {
       fields: [StakingPosition.stakingInstanceId],
       references: [StakingInstance.id],
+    }),
+    service: one(Service, {
+      fields: [StakingPosition.serviceId],
+      references: [Service.id],
     }),
   })
 );
