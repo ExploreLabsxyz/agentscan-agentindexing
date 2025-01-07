@@ -660,11 +660,8 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
         claimedRewards: 0n,
       })
       .onConflictDoUpdate({
-        target: [StakingPosition.id],
-        set: {
-          isActive: true,
-          lastUpdateTimestamp: Number(event.block.timestamp),
-        },
+        isActive: true,
+        lastUpdateTimestamp: Number(event.block.timestamp),
       });
   } catch (e) {
     console.error(`Error handling service staking for ${chainServiceId}:`, e);
@@ -902,7 +899,7 @@ ponder.on(
 
       // Helper function for safe contract reads
       const safeContractRead = async (
-        functionName: string,
+        functionName: any,
         fallbackValue: any
       ) => {
         try {
