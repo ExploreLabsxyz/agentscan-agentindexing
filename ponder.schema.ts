@@ -183,6 +183,8 @@ export const StakingPosition = onchainTable(
     isActive: t.boolean().default(false),
     serviceIds: t.text().array().default([]),
     rewards: t.bigint().default(0n),
+    totalRewards: t.bigint().default(0n),
+    claimedRewards: t.bigint().default(0n),
   }),
   (table) => ({
     stakingInstanceIdx: index().on(table.stakingInstanceId),

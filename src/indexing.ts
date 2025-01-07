@@ -18,6 +18,7 @@ import {
   transformIpfsUrl,
 } from "../utils";
 import { StakingTokenAbi } from "../abis/StakingToken";
+import { and, eq } from "ponder";
 
 const createDefaultService = (
   serviceId: string,
@@ -582,25 +583,23 @@ CONTRACT_NAMES.forEach((contractName) => {
  */
 const calculateRawApy = (
   rewardsPerSecond: bigint,
-  epochLength: bigint,
   totalStaked: bigint
 ): number => {
   if (totalStaked === 0n) return 0;
 
-  // Calculate rewards for one epoch
-  const rewardsPerEpoch = rewardsPerSecond * epochLength;
+  // Convert values to numbers with proper decimal precision
+  const rewardsPerSecondNum = Number(rewardsPerSecond) / 1e18;
+  const totalStakedNum = Number(totalStaked) / 1e18;
 
-  // Calculate rewards for one year
-  const SECONDS_PER_YEAR = 31536000n; // 365 * 24 * 60 * 60
-  const epochsPerYear = SECONDS_PER_YEAR / epochLength;
-  const rewardsPerYear = rewardsPerEpoch * epochsPerYear;
+  // Calculate annual rewards
+  const SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
+  const annualRewards = rewardsPerSecondNum * SECONDS_PER_YEAR;
 
-  // Convert to decimal numbers for division
-  const annualRewards = Number(rewardsPerYear) / 1e18; // Convert from wei to OLAS
-  const stakedAmount = Number(totalStaked) / 1e18; // Convert from wei to OLAS
+  // Calculate APY
+  const apy = (annualRewards / totalStakedNum) * 100;
 
-  // Multiply by 100 to get percentage value
-  return (annualRewards / stakedAmount) * 100;
+  // Return APY with reasonable precision
+  return Math.round(apy * 100) / 100;
 };
 
 // Handle deposits
@@ -700,7 +699,6 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          instance.epochLength ?? 0n,
           newTotalStaked
         ),
         lastApyUpdate: Number(event.block.timestamp),
@@ -748,7 +746,7 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          instance.epochLength ?? 0n,
+
           newTotalStaked
         ),
         lastApyUpdate: Number(event.block.timestamp),
@@ -766,35 +764,52 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
   }
 });
 
-// Handle reward claims
-ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
-  const instanceAddress = event.log.address.toLowerCase();
-  const claimerAddress = event.args.owner.toLowerCase();
-  const positionId = `${instanceAddress}-${claimerAddress}`;
-
-  console.log(`Handling reward claim for ${instanceAddress}`);
-  console.log(`Claimer: ${claimerAddress}`);
-  console.log(`Reward: ${event.args.reward}`);
-  console.log("positionId", positionId);
-  try {
-    const position = await context.db.find(StakingPosition, { id: positionId });
-
-    if (position) {
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        rewards: (position.rewards ?? 0n) + event.args.reward,
-        lastUpdateTimestamp: Number(event.block.timestamp),
-      });
-    }
-
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      lastApyUpdate: Number(event.block.timestamp),
-    });
-  } catch (e) {
-    console.error(`Error handling reward claim for ${instanceAddress}:`, e);
+/**
+ * Calculates new rewards for a staking position during checkpoint
+ * @param position - The staking position
+ * @param instance - The staking instance
+ * @param event - The checkpoint event
+ * @returns The new rewards amount in wei
+ */
+const calculateNewRewards = (
+  position: {
+    amount: bigint | null;
+    lastUpdateTimestamp: number;
+  },
+  instance: {
+    rewardsPerSecond: bigint | null;
+    totalStaked: bigint | null;
+  },
+  event: {
+    block: { timestamp: bigint };
   }
-});
+): bigint => {
+  if (
+    !position.amount ||
+    !instance.rewardsPerSecond ||
+    !instance.totalStaked ||
+    instance.totalStaked === 0n
+  ) {
+    return 0n;
+  }
 
-// Handle checkpoints which might update rewards
+  // Calculate time elapsed since last update
+  const timeElapsed = BigInt(
+    Number(event.block.timestamp) - position.lastUpdateTimestamp
+  );
+
+  // Calculate position's share of total stake
+  const positionShare = (position.amount * 10n ** 18n) / instance.totalStaked;
+
+  // Calculate rewards for the period
+  // (rewardsPerSecond * timeElapsed * positionShare) / 10^18
+  const newRewards =
+    (instance.rewardsPerSecond * timeElapsed * positionShare) / 10n ** 18n;
+
+  return newRewards;
+};
+
+// Update the checkpoint handler to use this calculation
 ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
 
@@ -804,15 +819,37 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
     });
 
     if (instance) {
+      // Update StakingInstance
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         epochLength: BigInt(event.args.epochLength.toString()),
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          event.args.epochLength,
           instance.totalStaked ?? 0n
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
+
+      // Get all active positions for this instance
+      const positions = await context.db.sql
+        .select()
+        .from(StakingPosition)
+        .where(
+          and(
+            eq(StakingPosition.stakingInstanceId, instanceAddress),
+            eq(StakingPosition.isActive, true)
+          )
+        );
+
+      console.log(positions);
+      // Update each position's rewards
+      for (const position of positions) {
+        const newRewards = calculateNewRewards(position, instance, event);
+        await context.db.update(StakingPosition, { id: position.id }).set({
+          rewards: (position.rewards ?? 0n) + newRewards,
+          totalRewards: (position.totalRewards ?? 0n) + newRewards,
+          lastUpdateTimestamp: Number(event.block.timestamp),
+        });
+      }
     }
   } catch (e) {
     console.error(`Error handling checkpoint for ${instanceAddress}:`, e);
@@ -1011,3 +1048,23 @@ ponder.on(
     }
   }
 );
+
+ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
+  const instanceAddress = event.log.address.toLowerCase();
+  const stakerAddress = event.args.owner.toLowerCase();
+  const positionId = `${instanceAddress}-${stakerAddress}`;
+
+  try {
+    const position = await context.db.find(StakingPosition, { id: positionId });
+
+    if (position) {
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        rewards: 0n,
+        claimedRewards: (position.claimedRewards ?? 0n) + event.args.reward,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+      });
+    }
+  } catch (e) {
+    console.error(`Error handling reward claim for ${positionId}:`, e);
+  }
+});
