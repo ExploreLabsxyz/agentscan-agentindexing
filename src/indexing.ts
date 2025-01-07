@@ -585,20 +585,19 @@ const calculateRawApy = (
   totalStaked: bigint
 ): number => {
   if (totalStaked === 0n) {
-    console.log("Total staked is 0, returning 0");
     return 0;
   }
 
-  // Convert values to numbers with proper decimal precision
-  const rewardsPerSecondNum = Number(rewardsPerSecond) / 1e18;
-  const totalStakedNum = Number(totalStaked) / 1e18;
+  // Use BigInt for initial calculations to maintain precision
+  const SECONDS_PER_YEAR = 31536000n; // 365 * 24 * 60 * 60
+  const PRECISION = 10000n; // For better decimal precision
 
-  const SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
-  const annualRewards = rewardsPerSecondNum * SECONDS_PER_YEAR;
-  console.log("Annual rewards:", annualRewards);
+  // Calculate annual rewards while maintaining precision
+  const annualRewards = (rewardsPerSecond * SECONDS_PER_YEAR * PRECISION) / 1n;
 
-  const apy = (annualRewards / totalStakedNum) * 100;
-  console.log("APY:", apy);
+  // Calculate APY percentage
+  const apy = Number((annualRewards * 100n) / totalStaked) / Number(PRECISION);
+
   // Return APY with reasonable precision
   return Math.round(apy * 100) / 100;
 };

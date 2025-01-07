@@ -160,6 +160,7 @@ export const StakingInstance = onchainTable(
     multisigThreshold: t.integer(),
     activityCheckerAddress: t.text(),
     configHash: t.text(),
+    serviceIds: t.text().array().default([]),
   }),
   (table) => ({
     chainIdx: index().on(table.chain),
@@ -488,6 +489,13 @@ export const AgentInstanceRelations = relations(AgentInstance, ({ one }) => ({
     references: [Agent.id],
   }),
 }));
+
+export const StakingInstanceRelations = relations(
+  StakingInstance,
+  ({ many }) => ({
+    stakingPositions: many(StakingPosition),
+  })
+);
 
 export const StakingPositionRelations = relations(
   StakingPosition,
