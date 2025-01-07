@@ -168,6 +168,7 @@ export const StakingInstance = onchainTable(
     timestampIdx: index().on(table.timestamp),
     blockNumberIdx: index().on(table.blockNumber),
     apyIdx: index().on(table.rawApy),
+    isActiveIdx: index().on(table.isActive),
   })
 );
 
@@ -182,7 +183,7 @@ export const StakingPosition = onchainTable(
     amount: t.bigint().default(0n),
     lastStakeTimestamp: t.integer().notNull(),
     lastUpdateTimestamp: t.integer().notNull(),
-    isActive: t.boolean().default(false),
+
     rewards: t.bigint().default(0n),
     totalRewards: t.bigint().default(0n),
     claimedRewards: t.bigint().default(0n),
@@ -194,7 +195,7 @@ export const StakingPosition = onchainTable(
     stakerAddressIdx: index().on(table.stakerAddress),
     multisigIdx: index().on(table.multisig),
     timestampIdx: index().on(table.lastUpdateTimestamp),
-    isActiveIdx: index().on(table.isActive),
+
     statusIdx: index().on(table.status),
   })
 );

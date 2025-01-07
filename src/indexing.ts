@@ -653,7 +653,6 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
         multisig: multisig,
         lastStakeTimestamp: Number(event.block.timestamp),
         lastUpdateTimestamp: Number(event.block.timestamp),
-        isActive: true,
         amount: 0n,
         rewards: 0n,
         totalRewards: 0n,
@@ -661,7 +660,7 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
         status: "active",
       })
       .onConflictDoUpdate({
-        isActive: true,
+        status: "active",
         lastUpdateTimestamp: Number(event.block.timestamp),
       });
   } catch (e) {
@@ -701,7 +700,6 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
 
       // Update staking position
       await context.db.update(StakingPosition, { id: positionId }).set({
-        isActive: false,
         rewards: (position.rewards ?? 0n) + event.args.reward,
         lastUpdateTimestamp: Number(event.block.timestamp),
         status: "inactive",
@@ -748,7 +746,7 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
       // Update staking position
       await context.db.update(StakingPosition, { id: positionId }).set({
         amount: newAmount,
-        isActive: newAmount > 0n,
+
         lastUpdateTimestamp: Number(event.block.timestamp),
         status: newAmount > 0n ? "active" : "inactive",
       });
@@ -830,7 +828,7 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
         .where(
           and(
             eq(StakingPosition.stakingInstanceId, instanceAddress),
-            eq(StakingPosition.isActive, true)
+            eq(StakingPosition.status, "active")
           )
         );
 
