@@ -584,7 +584,10 @@ const calculateRawApy = (
   rewardsPerSecond: bigint,
   totalStaked: bigint
 ): number => {
-  if (totalStaked === 0n) return 0;
+  if (totalStaked === 0n) {
+    console.log("Total staked is 0, returning 0");
+    return 0;
+  }
 
   // Convert values to numbers with proper decimal precision
   const rewardsPerSecondNum = Number(rewardsPerSecond) / 1e18;
