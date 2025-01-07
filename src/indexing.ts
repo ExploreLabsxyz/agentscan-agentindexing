@@ -658,6 +658,7 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
         rewards: 0n,
         totalRewards: 0n,
         claimedRewards: 0n,
+        status: "active",
       })
       .onConflictDoUpdate({
         isActive: true,
@@ -703,6 +704,7 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
         isActive: false,
         rewards: (position.rewards ?? 0n) + event.args.reward,
         lastUpdateTimestamp: Number(event.block.timestamp),
+        status: "inactive",
       });
     }
   } catch (e) {
@@ -738,7 +740,6 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-
           newTotalStaked
         ),
         lastApyUpdate: Number(event.block.timestamp),
@@ -749,6 +750,7 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
         amount: newAmount,
         isActive: newAmount > 0n,
         lastUpdateTimestamp: Number(event.block.timestamp),
+        status: newAmount > 0n ? "active" : "inactive",
       });
     }
   } catch (e) {
@@ -839,6 +841,7 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
           rewards: (position.rewards ?? 0n) + newRewards,
           totalRewards: (position.totalRewards ?? 0n) + newRewards,
           lastUpdateTimestamp: Number(event.block.timestamp),
+          status: (position.amount ?? 0n) > 0n ? "active" : "inactive",
         });
       }
     }
@@ -873,6 +876,25 @@ ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
       lastApyUpdate: Number(event.block.timestamp),
     });
+  } catch (e) {
+    console.error(
+      `Error handling services eviction for ${instanceAddress}:`,
+      e
+    );
+  }
+
+  //Update status of staking position
+  try {
+    const positions = await context.db.sql
+      .select()
+      .from(StakingPosition)
+      .where(eq(StakingPosition.stakingInstanceId, instanceAddress));
+
+    for (const position of positions) {
+      await context.db.update(StakingPosition, { id: position.id }).set({
+        status: "inactive",
+      });
+    }
   } catch (e) {
     console.error(
       `Error handling services eviction for ${instanceAddress}:`,

@@ -186,6 +186,7 @@ export const StakingPosition = onchainTable(
     rewards: t.bigint().default(0n),
     totalRewards: t.bigint().default(0n),
     claimedRewards: t.bigint().default(0n),
+    status: t.text(),
   }),
   (table) => ({
     stakingInstanceIdx: index().on(table.stakingInstanceId),
@@ -194,6 +195,7 @@ export const StakingPosition = onchainTable(
     multisigIdx: index().on(table.multisig),
     timestampIdx: index().on(table.lastUpdateTimestamp),
     isActiveIdx: index().on(table.isActive),
+    statusIdx: index().on(table.status),
   })
 );
 
