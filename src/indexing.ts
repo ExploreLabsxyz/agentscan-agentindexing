@@ -609,6 +609,9 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
   const depositorAddress = event.args.sender.toLowerCase();
   const positionId = `${instanceAddress}-${depositorAddress}`;
 
+  console.log(`Handling deposit for ${instanceAddress}`);
+  console.log(`Depositor: ${depositorAddress}`);
+
   try {
     // Update staking instance total
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
@@ -644,6 +647,10 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
   const positionId = `${instanceAddress}-${stakerAddress}`;
   const serviceId = event.args.serviceId.toString();
 
+  console.log(`Handling service staking for ${instanceAddress}`);
+  console.log(`Staker: ${stakerAddress}`);
+  console.log(`Service: ${serviceId}`);
+
   try {
     // Update staking instance
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
@@ -675,6 +682,9 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
   const stakerAddress = event.args.owner.toLowerCase();
   const positionId = `${instanceAddress}-${stakerAddress}`;
   const serviceId = event.args.serviceId.toString();
+  console.log(`Handling service unstaking for ${instanceAddress}`);
+  console.log(`Staker: ${stakerAddress}`);
+  console.log(`Service: ${serviceId}`);
 
   try {
     const instance = await context.db.find(StakingInstance, {
@@ -723,6 +733,10 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
   const withdrawerAddress = event.args.to.toLowerCase();
   const positionId = `${instanceAddress}-${withdrawerAddress}`;
 
+  console.log(`Handling withdrawal for ${instanceAddress}`);
+  console.log(`Withdrawer: ${withdrawerAddress}`);
+  console.log(`Amount: ${event.args.amount}`);
+
   try {
     const instance = await context.db.find(StakingInstance, {
       id: instanceAddress,
@@ -762,6 +776,10 @@ ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
   const claimerAddress = event.args.owner.toLowerCase();
   const positionId = `${instanceAddress}-${claimerAddress}`;
 
+  console.log(`Handling reward claim for ${instanceAddress}`);
+  console.log(`Claimer: ${claimerAddress}`);
+  console.log(`Reward: ${event.args.reward}`);
+  console.log("positionId", positionId);
   try {
     const position = await context.db.find(StakingPosition, { id: positionId });
 
@@ -805,7 +823,6 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
   }
 });
 
-// Handle service inactivity warnings
 ponder.on(
   "StakingContracts:ServiceInactivityWarning",
   async ({ event, context }) => {
@@ -848,6 +865,11 @@ ponder.on(
     const instanceAddress = event.args.instance.toLowerCase();
     const factoryAddress = event.log.address.toLowerCase();
 
+    console.log(`Creating new staking instance ${instanceAddress} on ${chain}`);
+    console.log(`Factory: ${factoryAddress}`);
+    console.log(`Implementation: ${event.args.implementation}`);
+    console.log(`Deployer: ${event.args.sender}`);
+
     try {
       await context.db.insert(StakingInstance).values({
         id: instanceAddress,
@@ -873,6 +895,9 @@ ponder.on(
   "StakingFactoryContracts:InstanceStatusChanged",
   async ({ event, context }) => {
     const instanceAddress = event.args.instance.toLowerCase();
+    console.log(
+      `Updating staking instance ${instanceAddress} status to ${event.args.isEnabled}`
+    );
 
     try {
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
@@ -893,6 +918,7 @@ ponder.on(
   "StakingFactoryContracts:InstanceRemoved",
   async ({ event, context }) => {
     const instanceAddress = event.args.instance.toLowerCase();
+    console.log(`Marking staking instance ${instanceAddress} as removed`);
 
     try {
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
