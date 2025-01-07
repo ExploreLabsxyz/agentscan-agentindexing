@@ -577,7 +577,6 @@ CONTRACT_NAMES.forEach((contractName) => {
 /**
  * Calculates raw APY for a staking position
  * @param rewardsPerSecond - Rewards in OLAS per second (in wei)
- * @param epochLength - Length of epoch in seconds
  * @param totalStaked - Total amount staked (in wei)
  * @returns APY as a decimal (e.g. 0.15 for 15% APY)
  */
@@ -591,11 +590,9 @@ const calculateRawApy = (
   const rewardsPerSecondNum = Number(rewardsPerSecond) / 1e18;
   const totalStakedNum = Number(totalStaked) / 1e18;
 
-  // Calculate annual rewards
   const SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
   const annualRewards = rewardsPerSecondNum * SECONDS_PER_YEAR;
 
-  // Calculate APY
   const apy = (annualRewards / totalStakedNum) * 100;
 
   // Return APY with reasonable precision
