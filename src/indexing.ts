@@ -574,19 +574,20 @@ CONTRACT_NAMES.forEach((contractName) => {
   });
 });
 
-/**
- * Calculates raw APY for a staking position
- * @param rewardsPerSecond - Rewards in OLAS per second (in wei)
- * @param totalStaked - Total amount staked (in wei)
- * @returns APY as a decimal (e.g. 0.15 for 15% APY)
- */
+// Update APY calculation to account for number of services
 const calculateRawApy = (
   rewardsPerSecond: bigint,
   totalStaked: bigint,
   timeForEmissions: bigint,
-  livenessPeriod: bigint
+  livenessPeriod: bigint,
+  numActiveServices: number
 ): number => {
-  if (totalStaked === 0n || timeForEmissions === 0n || livenessPeriod === 0n) {
+  if (
+    totalStaked === 0n ||
+    timeForEmissions === 0n ||
+    livenessPeriod === 0n ||
+    numActiveServices === 0
+  ) {
     return 0;
   }
 
@@ -601,7 +602,10 @@ const calculateRawApy = (
   const periodsPerYear = SECONDS_PER_YEAR / periodLength;
   const activeTimePerYear = periodsPerYear * timeForEmissions;
   const annualRewards = (rewardsPerSecond * activeTimePerYear * PRECISION) / 1n;
-  const apy = Number((annualRewards * 100n) / totalStaked) / Number(PRECISION);
+  // Divide by number of active services since rewards are shared
+  const rewardsPerService = annualRewards / BigInt(numActiveServices);
+  const apy =
+    Number((rewardsPerService * 100n) / totalStaked) / Number(PRECISION);
 
   return Math.round(apy * 100) / 100;
 };
@@ -647,7 +651,8 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
           instance.rewardsPerSecond ?? 0n,
           event.args.balance,
           BigInt(instance.timeForEmissions || 0),
-          BigInt(instance.livenessPeriod || 0)
+          BigInt(instance.livenessPeriod || 0),
+          instance.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
@@ -660,84 +665,75 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
 // Handle service staking
 ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
-  const stakerAddress = event.args.owner.toLowerCase();
-  const multisig = event.args.multisig.toLowerCase();
-  const chainServiceId = createChainScopedId(
-    context.network.name,
-    event.args.serviceId.toString()
-  );
-  const positionId = `${instanceAddress}-${chainServiceId}`;
+  const instance = await context.db.find(StakingInstance, {
+    id: instanceAddress,
+  });
 
-  try {
-    await context.db
-      .insert(StakingPosition)
-      .values({
-        id: positionId,
-        stakingInstanceId: instanceAddress,
-        serviceId: chainServiceId,
-        stakerAddress: stakerAddress,
-        multisig: multisig,
-        lastStakeTimestamp: Number(event.block.timestamp),
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        amount: 0n,
-        rewards: 0n,
-        totalRewards: 0n,
-        claimedRewards: 0n,
-        status: "active",
-      })
-      .onConflictDoUpdate({
-        status: "active",
-        lastUpdateTimestamp: Number(event.block.timestamp),
-      });
-  } catch (e) {
-    console.error(`Error handling service staking for ${chainServiceId}:`, e);
+  if (instance) {
+    const newServiceIds = [
+      ...new Set([...(instance.serviceIds || []), event.args.serviceId]),
+    ];
+
+    // Update StakingInstance
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      serviceIds: newServiceIds.map((id) => id.toString()),
+      numActiveServices: newServiceIds.length,
+      rawApy: calculateRawApy(
+        instance.rewardsPerSecond ?? 0n,
+        instance.totalStaked ?? 0n,
+        BigInt(instance.timeForEmissions || 0),
+        BigInt(instance.livenessPeriod || 0),
+        newServiceIds.length
+      ),
+    });
+
+    const positionId = `${instanceAddress}-${event.args.serviceId}-${event.args.owner}`;
+    await context.db.insert(StakingPosition).values({
+      id: positionId,
+      stakingInstanceId: instanceAddress,
+      serviceId: event.args.serviceId.toString(),
+      stakerAddress: event.args.owner,
+      multisig: event.args.multisig,
+      amount: instance?.minStakingDeposit ?? 0n,
+      lastStakeTimestamp: Number(event.block.timestamp),
+      lastUpdateTimestamp: Number(event.block.timestamp),
+      status: "active",
+    });
   }
 });
 
 // Handle service unstaking
 ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
-  const chainServiceId = createChainScopedId(
-    context.network.name,
-    event.args.serviceId.toString()
-  );
-  const positionId = `${instanceAddress}-${chainServiceId}`;
+  const instance = await context.db.find(StakingInstance, {
+    id: instanceAddress,
+  });
 
-  console.log(`Handling service unstaking for ${instanceAddress}`);
-  console.log(`Service: ${chainServiceId}`);
-
-  try {
-    const instance = await context.db.find(StakingInstance, {
-      id: instanceAddress,
-    });
-    const position = await context.db.find(StakingPosition, { id: positionId });
-
-    if (instance && position) {
-      const newTotalStaked = (instance.totalStaked ?? 0n) - event.args.reward;
-
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        totalStaked: newTotalStaked,
-        rawApy: calculateRawApy(
-          instance.rewardsPerSecond ?? 0n,
-          newTotalStaked,
-          BigInt(instance.timeForEmissions ?? 0),
-          BigInt(instance.livenessPeriod ?? 0)
-        ),
-        lastApyUpdate: Number(event.block.timestamp),
-      });
-
-      // Update staking position
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        rewards: (position.rewards ?? 0n) + event.args.reward,
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        status: "inactive",
-      });
-    }
-  } catch (e) {
-    console.error(
-      `Error handling service unstaking for ${instanceAddress}:`,
-      e
+  if (instance) {
+    const newServiceIds = (instance.serviceIds || []).filter(
+      (id) => id !== event.args.serviceId.toString()
     );
+
+    // Update StakingInstance
+    await context.db.update(StakingInstance, { id: instanceAddress }).set({
+      serviceIds: newServiceIds.map((id) => id.toString()),
+      numActiveServices: newServiceIds.length,
+      rawApy: calculateRawApy(
+        instance.rewardsPerSecond ?? 0n,
+        instance.totalStaked ?? 0n,
+        BigInt(instance.timeForEmissions || 0),
+        BigInt(instance.livenessPeriod || 0),
+        newServiceIds.length
+      ),
+    });
+
+    // Update StakingPosition
+    const positionId = `${instanceAddress}-${event.args.serviceId}-${event.args.owner}`;
+    await context.db.update(StakingPosition, { id: positionId }).set({
+      amount: 0n,
+      lastUpdateTimestamp: Number(event.block.timestamp),
+      status: "UNSTAKED",
+    });
   }
 });
 
@@ -768,7 +764,8 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
           instance.rewardsPerSecond ?? 0n,
           newTotalStaked,
           BigInt(instance.timeForEmissions ?? 0),
-          BigInt(instance.livenessPeriod ?? 0)
+          BigInt(instance.livenessPeriod ?? 0),
+          instance.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
@@ -798,18 +795,15 @@ const calculateNewRewards = (
     amount: bigint | null;
     lastUpdateTimestamp: number;
   },
-  instance: {
-    rewardsPerSecond: bigint | null;
-    totalStaked: bigint | null;
-  },
+  instance: any | null,
   event: {
     block: { timestamp: bigint };
   }
 ): bigint => {
   if (
     !position.amount ||
-    !instance.rewardsPerSecond ||
-    !instance.totalStaked ||
+    !instance?.rewardsPerSecond ||
+    !instance?.totalStaked ||
     instance.totalStaked === 0n
   ) {
     return 0n;
@@ -840,40 +834,40 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
       id: instanceAddress,
     });
 
-    if (instance) {
-      // Update StakingInstance
+    if (instance?.timeForEmissions && instance?.livenessPeriod) {
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         epochLength: BigInt(event.args.epochLength.toString()),
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
           instance.totalStaked ?? 0n,
-          BigInt(instance.timeForEmissions ?? 0),
-          BigInt(instance.livenessPeriod ?? 0)
+          BigInt(instance.timeForEmissions),
+          BigInt(instance.livenessPeriod),
+          instance.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
+    }
 
-      // Get all active positions for this instance
-      const positions = await context.db.sql
-        .select()
-        .from(StakingPosition)
-        .where(
-          and(
-            eq(StakingPosition.stakingInstanceId, instanceAddress),
-            eq(StakingPosition.status, "active")
-          )
-        );
+    // Get all active positions for this instance
+    const positions = await context.db.sql
+      .select()
+      .from(StakingPosition)
+      .where(
+        and(
+          eq(StakingPosition.stakingInstanceId, instanceAddress),
+          eq(StakingPosition.status, "active")
+        )
+      );
 
-      // Update each position's rewards
-      for (const position of positions) {
-        const newRewards = calculateNewRewards(position, instance, event);
-        await context.db.update(StakingPosition, { id: position.id }).set({
-          rewards: (position.rewards ?? 0n) + newRewards,
-          totalRewards: (position.totalRewards ?? 0n) + newRewards,
-          lastUpdateTimestamp: Number(event.block.timestamp),
-          status: (position.amount ?? 0n) > 0n ? "active" : "inactive",
-        });
-      }
+    // Update each position's rewards
+    for (const position of positions) {
+      const newRewards = calculateNewRewards(position, instance, event);
+      await context.db.update(StakingPosition, { id: position.id }).set({
+        rewards: (position.rewards ?? 0n) + newRewards,
+        totalRewards: (position.totalRewards ?? 0n) + newRewards,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+        status: (position.amount ?? 0n) > 0n ? "active" : "inactive",
+      });
     }
   } catch (e) {
     console.error(`Error handling checkpoint for ${instanceAddress}:`, e);

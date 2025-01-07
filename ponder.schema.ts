@@ -161,6 +161,7 @@ export const StakingInstance = onchainTable(
     activityCheckerAddress: t.text(),
     configHash: t.text(),
     serviceIds: t.text().array().default([]),
+    numActiveServices: t.integer().default(0),
   }),
   (table) => ({
     chainIdx: index().on(table.chain),
