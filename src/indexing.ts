@@ -323,7 +323,7 @@ CONTRACT_NAMES.forEach((contractName) => {
   });
 
   ponder.on(`${contractName}:CreateService`, async ({ event, context }) => {
-    const chain = getChainName(contractName);
+    const chain = context?.network.name;
 
     const serviceId = createChainScopedId(
       chain,
@@ -839,3 +839,71 @@ ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
     );
   }
 });
+
+// Handle StakingFactory instance creation
+ponder.on(
+  "StakingFactoryContracts:InstanceCreated",
+  async ({ event, context }) => {
+    const chain = context?.network.name;
+    const instanceAddress = event.args.instance.toLowerCase();
+    const factoryAddress = event.log.address.toLowerCase();
+
+    try {
+      await context.db.insert(StakingInstance).values({
+        id: instanceAddress,
+        chain,
+        factory: factoryAddress,
+        implementation: event.args.implementation.toLowerCase(),
+        deployer: event.args.sender.toLowerCase(),
+        blockNumber: Number(event.block.number),
+        timestamp: Number(event.block.timestamp),
+        isActive: true,
+      });
+    } catch (e) {
+      console.error(
+        `Error handling instance creation for ${instanceAddress}:`,
+        e
+      );
+    }
+  }
+);
+
+// Handle StakingFactory instance status changes
+ponder.on(
+  "StakingFactoryContracts:InstanceStatusChanged",
+  async ({ event, context }) => {
+    const instanceAddress = event.args.instance.toLowerCase();
+
+    try {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        isActive: event.args.isEnabled,
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    } catch (e) {
+      console.error(
+        `Error handling instance status change for ${instanceAddress}:`,
+        e
+      );
+    }
+  }
+);
+
+// Handle StakingFactory instance removal
+ponder.on(
+  "StakingFactoryContracts:InstanceRemoved",
+  async ({ event, context }) => {
+    const instanceAddress = event.args.instance.toLowerCase();
+
+    try {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        isActive: false,
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    } catch (e) {
+      console.error(
+        `Error handling instance removal for ${instanceAddress}:`,
+        e
+      );
+    }
+  }
+);
