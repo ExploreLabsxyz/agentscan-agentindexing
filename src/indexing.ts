@@ -1016,30 +1016,35 @@ ponder.on(
       const [rewardsPerSecond, stakingToken] = tokenConfig;
       const [agentIds, numAgentInstances, activityCheckerAddress] = agentConfig;
 
-      await context.db.insert(StakingInstance).values({
-        id: instanceAddress,
-        implementation: event.args.implementation,
-        deployer: event.args.sender,
-        chain: context?.network.name,
-        isActive: true,
-        maxNumServices: Number(maxNumServices),
-        blockNumber: Number(event.block.number),
-        timestamp: Number(event.block.timestamp),
-        rewardsPerSecond,
-        stakingToken,
-        agentIds: Array.isArray(agentIds)
-          ? agentIds.map((id: any) => id.toString())
-          : [],
-        minStakingDeposit,
-        maxInactivityPeriods: Number(maxInactivityPeriods),
-        minStakingPeriods: Number(minStakingPeriods),
-        livenessPeriod: Number(livenessPeriod),
-        timeForEmissions: Number(timeForEmissions),
-        numAgentInstances: Number(numAgentInstances),
-        multisigThreshold: Number(multisigThreshold),
-        activityCheckerAddress,
-        configHash,
-      });
+      await context.db
+        .insert(StakingInstance)
+        .values({
+          id: instanceAddress,
+          implementation: event.args.implementation,
+          deployer: event.args.sender,
+          chain: context?.network.name,
+          isActive: true,
+          maxNumServices: Number(maxNumServices),
+          blockNumber: Number(event.block.number),
+          timestamp: Number(event.block.timestamp),
+          rewardsPerSecond,
+          stakingToken,
+          agentIds: Array.isArray(agentIds)
+            ? agentIds.map((id: any) => id.toString())
+            : [],
+          minStakingDeposit,
+          maxInactivityPeriods: Number(maxInactivityPeriods),
+          minStakingPeriods: Number(minStakingPeriods),
+          livenessPeriod: Number(livenessPeriod),
+          timeForEmissions: Number(timeForEmissions),
+          numAgentInstances: Number(numAgentInstances),
+          multisigThreshold: Number(multisigThreshold),
+          activityCheckerAddress,
+          configHash,
+        })
+        .onConflictDoUpdate({
+          isActive: true,
+        });
     } catch (e) {
       console.error(
         `Error handling instance creation for ${instanceAddress}:`,
