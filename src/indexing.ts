@@ -863,30 +863,87 @@ ponder.on(
       const { client } = context;
       const { StakingContracts } = context.contracts;
 
-      // Fetch contract data using the proper client format
-      const [rewardsPerSecond, stakingTokenAddress, agentIds, maxNumServices] =
-        await Promise.all([
-          client.readContract({
-            abi: StakingContracts.abi,
-            address: instanceAddress as `0x${string}`,
-            functionName: "rewardsPerSecond",
-          }),
-          client.readContract({
-            abi: StakingContracts.abi,
-            address: instanceAddress as `0x${string}`,
-            functionName: "stakingToken",
-          }),
-          client.readContract({
-            abi: StakingContracts.abi,
-            address: instanceAddress as `0x${string}`,
-            functionName: "getAgentIds",
-          }),
-          client.readContract({
-            abi: StakingContracts.abi,
-            address: instanceAddress as `0x${string}`,
-            functionName: "maxNumServices",
-          }),
-        ]);
+      const [
+        rewardsPerSecond,
+        stakingTokenAddress,
+        agentIds,
+        maxNumServices,
+        minStakingDeposit,
+        maxInactivityPeriods,
+        minStakingPeriods,
+        livenessPeriod,
+        timeForEmissions,
+        numAgentInstances,
+        multisigThreshold,
+        activityCheckerAddress,
+        configHash,
+      ] = await Promise.all([
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "rewardsPerSecond",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "stakingToken",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "getAgentIds",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "maxNumServices",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "minStakingDeposit",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "maxNumInactivityPeriods",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "minStakingDuration",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "livenessPeriod",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "timeForEmissions",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "numAgentInstances",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "threshold",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "activityChecker",
+        }),
+        client.readContract({
+          abi: StakingContracts.abi,
+          address: instanceAddress as `0x${string}`,
+          functionName: "configHash",
+        }),
+      ]);
 
       await context.db.insert(StakingInstance).values({
         id: instanceAddress,
@@ -900,6 +957,15 @@ ponder.on(
         rewardsPerSecond: rewardsPerSecond,
         stakingToken: stakingTokenAddress,
         agentIds: agentIds.map((id: any) => id.toString()),
+        minStakingDeposit,
+        maxInactivityPeriods: Number(maxInactivityPeriods),
+        minStakingPeriods: Number(minStakingPeriods),
+        livenessPeriod: Number(livenessPeriod),
+        timeForEmissions: Number(timeForEmissions),
+        numAgentInstances: Number(numAgentInstances),
+        multisigThreshold: Number(multisigThreshold),
+        activityCheckerAddress,
+        configHash,
       });
     } catch (e) {
       console.error(
