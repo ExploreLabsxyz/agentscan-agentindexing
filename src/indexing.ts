@@ -599,8 +599,8 @@ const calculateRawApy = (
   const annualRewards = Number(rewardsPerYear) / 1e18; // Convert from wei to OLAS
   const stakedAmount = Number(totalStaked) / 1e18; // Convert from wei to OLAS
 
-  // Calculate APY
-  return annualRewards / stakedAmount;
+  // Multiply by 100 to get percentage value
+  return (annualRewards / stakedAmount) * 100;
 };
 
 // Handle deposits
@@ -650,7 +650,6 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
   console.log(`Service: ${serviceId}`);
 
   try {
-    // Update staking instance
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
       isActive: true,
       lastApyUpdate: Number(event.block.timestamp),
@@ -697,7 +696,6 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
         (id) => id !== serviceId
       );
 
-      // Update staking instance
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         totalStaked: newTotalStaked,
         rawApy: calculateRawApy(
@@ -866,7 +864,7 @@ ponder.on(
       const { StakingContracts } = context.contracts;
 
       // Fetch contract data using the proper client format
-      const [rewardsPerSecond, stakingTokenAddress, agentIds] =
+      const [rewardsPerSecond, stakingTokenAddress, agentIds, maxNumServices] =
         await Promise.all([
           client.readContract({
             abi: StakingContracts.abi,
@@ -883,6 +881,11 @@ ponder.on(
             address: instanceAddress as `0x${string}`,
             functionName: "getAgentIds",
           }),
+          client.readContract({
+            abi: StakingContracts.abi,
+            address: instanceAddress as `0x${string}`,
+            functionName: "maxNumServices",
+          }),
         ]);
 
       await context.db.insert(StakingInstance).values({
@@ -891,6 +894,7 @@ ponder.on(
         deployer: event.args.sender,
         chain: context?.network.name,
         isActive: true,
+        maxNumServices: Number(maxNumServices),
         blockNumber: Number(event.block.number),
         timestamp: Number(event.block.timestamp),
         rewardsPerSecond: rewardsPerSecond,
@@ -924,7 +928,6 @@ ponder.on(
   }
 );
 
-// Handle StakingFactory instance removal
 ponder.on(
   "StakingFactoryContracts:InstanceRemoved",
   async ({ event, context }) => {

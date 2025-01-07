@@ -150,6 +150,7 @@ export const StakingInstance = onchainTable(
     rawApy: t.real().default(0),
     lastApyUpdate: t.integer().default(0),
     agentIds: t.text().array(),
+    maxNumServices: t.integer().default(0),
   }),
   (table) => ({
     chainIdx: index().on(table.chain),
