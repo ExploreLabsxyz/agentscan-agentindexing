@@ -595,9 +595,10 @@ const calculateRawApy = (
 
   const SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
   const annualRewards = rewardsPerSecondNum * SECONDS_PER_YEAR;
+  console.log("Annual rewards:", annualRewards);
 
   const apy = (annualRewards / totalStakedNum) * 100;
-
+  console.log("APY:", apy);
   // Return APY with reasonable precision
   return Math.round(apy * 100) / 100;
 };
