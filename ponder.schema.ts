@@ -133,32 +133,11 @@ export const Component = onchainTable(
   })
 );
 
-export const StakingToken = onchainTable(
-  "staking_token",
-  (t) => ({
-    id: t.text().primaryKey(),
-    chain: t.text().notNull(),
-    implementation: t.text().notNull(),
-    deployer: t.text().notNull(),
-    blockNumber: t.integer().notNull(),
-    timestamp: t.integer().notNull(),
-    isEnabled: t.boolean().notNull(),
-  }),
-  (table) => ({
-    chainIdx: index().on(table.chain),
-    implementationIdx: index().on(table.implementation),
-    deployerIdx: index().on(table.deployer),
-    timestampIdx: index().on(table.timestamp),
-    blockNumberIdx: index().on(table.blockNumber),
-  })
-);
-
 export const StakingInstance = onchainTable(
   "staking_instance",
   (t) => ({
     id: t.text().primaryKey(),
     chain: t.text().notNull(),
-    factory: t.text().notNull(),
     implementation: t.text().notNull(),
     deployer: t.text().notNull(),
     blockNumber: t.integer().notNull(),
@@ -175,7 +154,6 @@ export const StakingInstance = onchainTable(
   }),
   (table) => ({
     chainIdx: index().on(table.chain),
-    factoryIdx: index().on(table.factory),
     implementationIdx: index().on(table.implementation),
     deployerIdx: index().on(table.deployer),
     timestampIdx: index().on(table.timestamp),
@@ -492,17 +470,6 @@ export const AgentInstanceRelations = relations(AgentInstance, ({ one }) => ({
     references: [Agent.id],
   }),
 }));
-
-export const StakingInstanceRelations = relations(
-  StakingInstance,
-  ({ one, many }) => ({
-    factory: one(StakingToken, {
-      fields: [StakingInstance.factory],
-      references: [StakingToken.id],
-    }),
-    positions: many(StakingPosition),
-  })
-);
 
 export const StakingPositionRelations = relations(
   StakingPosition,

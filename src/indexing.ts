@@ -18,7 +18,7 @@ import {
   transformIpfsUrl,
 } from "../utils";
 import { StakingTokenAbi } from "../abis/StakingToken";
-import { eq } from "ponder";
+
 const createDefaultService = (
   serviceId: string,
   chain: string,
@@ -613,13 +613,11 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
   console.log(`Depositor: ${depositorAddress}`);
 
   try {
-    // Update staking instance total
     await context.db.update(StakingInstance, { id: instanceAddress }).set({
       totalStaked: event.args.balance,
       lastApyUpdate: Number(event.block.timestamp),
     });
 
-    // Update or create staking position
     await context.db
       .insert(StakingPosition)
       .values({
@@ -861,25 +859,17 @@ ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
 ponder.on(
   "StakingFactoryContracts:InstanceCreated",
   async ({ event, context }) => {
-    const chain = context?.network.name;
     const instanceAddress = event.args.instance.toLowerCase();
-    const factoryAddress = event.log.address.toLowerCase();
-
-    console.log(`Creating new staking instance ${instanceAddress} on ${chain}`);
-    console.log(`Factory: ${factoryAddress}`);
-    console.log(`Implementation: ${event.args.implementation}`);
-    console.log(`Deployer: ${event.args.sender}`);
 
     try {
       await context.db.insert(StakingInstance).values({
         id: instanceAddress,
-        chain,
-        factory: factoryAddress,
-        implementation: event.args.implementation.toLowerCase(),
-        deployer: event.args.sender.toLowerCase(),
+        implementation: event.args.implementation,
+        deployer: event.args.sender,
+        chain: context?.network.name,
+        isActive: true,
         blockNumber: Number(event.block.number),
         timestamp: Number(event.block.timestamp),
-        isActive: true,
       });
     } catch (e) {
       console.error(
@@ -890,19 +880,14 @@ ponder.on(
   }
 );
 
-// Handle StakingFactory instance status changes
 ponder.on(
   "StakingFactoryContracts:InstanceStatusChanged",
   async ({ event, context }) => {
     const instanceAddress = event.args.instance.toLowerCase();
-    console.log(
-      `Updating staking instance ${instanceAddress} status to ${event.args.isEnabled}`
-    );
 
     try {
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         isActive: event.args.isEnabled,
-        lastApyUpdate: Number(event.block.timestamp),
       });
     } catch (e) {
       console.error(
@@ -918,12 +903,10 @@ ponder.on(
   "StakingFactoryContracts:InstanceRemoved",
   async ({ event, context }) => {
     const instanceAddress = event.args.instance.toLowerCase();
-    console.log(`Marking staking instance ${instanceAddress} as removed`);
 
     try {
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         isActive: false,
-        lastApyUpdate: Number(event.block.timestamp),
       });
     } catch (e) {
       console.error(
