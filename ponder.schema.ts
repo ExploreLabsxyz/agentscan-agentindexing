@@ -144,7 +144,6 @@ export const StakingInstance = onchainTable(
     timestamp: t.integer().notNull(),
     totalStaked: t.bigint().default(0n),
     stakingToken: t.text(),
-    rewardToken: t.text(),
     isActive: t.boolean().default(true),
     rewardsPerSecond: t.bigint().default(0n),
     epochLength: t.bigint().default(0n),

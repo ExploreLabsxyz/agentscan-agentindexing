@@ -862,6 +862,29 @@ ponder.on(
     const instanceAddress = event.args.instance.toLowerCase();
 
     try {
+      const { client } = context;
+      const { StakingContracts } = context.contracts;
+
+      // Fetch contract data using the proper client format
+      const [rewardsPerSecond, stakingTokenAddress, agentIds] =
+        await Promise.all([
+          client.readContract({
+            abi: StakingContracts.abi,
+            address: instanceAddress as `0x${string}`,
+            functionName: "rewardsPerSecond",
+          }),
+          client.readContract({
+            abi: StakingContracts.abi,
+            address: instanceAddress as `0x${string}`,
+            functionName: "stakingToken",
+          }),
+          client.readContract({
+            abi: StakingContracts.abi,
+            address: instanceAddress as `0x${string}`,
+            functionName: "getAgentIds",
+          }),
+        ]);
+
       await context.db.insert(StakingInstance).values({
         id: instanceAddress,
         implementation: event.args.implementation,
@@ -870,6 +893,9 @@ ponder.on(
         isActive: true,
         blockNumber: Number(event.block.number),
         timestamp: Number(event.block.timestamp),
+        rewardsPerSecond: rewardsPerSecond,
+        stakingToken: stakingTokenAddress,
+        agentIds: agentIds.map((id: any) => id.toString()),
       });
     } catch (e) {
       console.error(
