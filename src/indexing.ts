@@ -902,72 +902,57 @@ ponder.on(
         address: instanceAddress as `0x${string}`,
       };
 
-      // Group related contract reads
+      // Helper function for safe contract reads
+      const safeContractRead = async (
+        functionName: string,
+        fallbackValue: any
+      ) => {
+        try {
+          return await client.readContract({
+            ...stakingContract,
+            functionName,
+          });
+        } catch (error) {
+          console.warn(
+            `Failed to read ${functionName} for ${instanceAddress}:`,
+            error
+          );
+          return fallbackValue;
+        }
+      };
+
       const [basicConfig, periodConfig, tokenConfig, agentConfig] =
         await Promise.all([
           // Basic configuration
           Promise.all([
-            client.readContract({
-              ...stakingContract,
-              functionName: "maxNumServices",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "minStakingDeposit",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "configHash",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "threshold",
-            }),
+            safeContractRead("maxNumServices", 0n),
+            safeContractRead("minStakingDeposit", 0n),
+            safeContractRead("configHash", "0x"),
+            safeContractRead("threshold", 0n),
           ]),
           // Period configurations
           Promise.all([
-            client.readContract({
-              ...stakingContract,
-              functionName: "maxNumInactivityPeriods",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "minStakingDuration",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "livenessPeriod",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "timeForEmissions",
-            }),
+            safeContractRead("maxNumInactivityPeriods", 0n),
+            safeContractRead("minStakingDuration", 0n),
+            safeContractRead("livenessPeriod", 0n),
+            safeContractRead("timeForEmissions", 0n),
           ]),
           // Token related
           Promise.all([
-            client.readContract({
-              ...stakingContract,
-              functionName: "rewardsPerSecond",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "stakingToken",
-            }),
+            safeContractRead("rewardsPerSecond", 0n),
+            safeContractRead(
+              "stakingToken",
+              "0x0000000000000000000000000000000000000000"
+            ),
           ]),
           // Agent related
           Promise.all([
-            client.readContract({
-              ...stakingContract,
-              functionName: "getAgentIds",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "numAgentInstances",
-            }),
-            client.readContract({
-              ...stakingContract,
-              functionName: "activityChecker",
-            }),
+            safeContractRead("getAgentIds", []),
+            safeContractRead("numAgentInstances", 0n),
+            safeContractRead(
+              "activityChecker",
+              "0x0000000000000000000000000000000000000000"
+            ),
           ]),
         ]);
 
@@ -993,7 +978,9 @@ ponder.on(
         timestamp: Number(event.block.timestamp),
         rewardsPerSecond,
         stakingToken,
-        agentIds: agentIds.map((id: any) => id.toString()),
+        agentIds: Array.isArray(agentIds)
+          ? agentIds.map((id: any) => id.toString())
+          : [],
         minStakingDeposit,
         maxInactivityPeriods: Number(maxInactivityPeriods),
         minStakingPeriods: Number(minStakingPeriods),
