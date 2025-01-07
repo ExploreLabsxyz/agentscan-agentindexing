@@ -794,7 +794,7 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
         epochLength: BigInt(event.args.epochLength.toString()),
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
-          BigInt(event.args.epochLength.toString()),
+          event.args.epochLength,
           instance.totalStaked ?? 0n
         ),
         lastApyUpdate: Number(event.block.timestamp),
