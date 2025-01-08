@@ -578,32 +578,22 @@ CONTRACT_NAMES.forEach((contractName) => {
 const calculateRawApy = (
   rewardsPerSecond: bigint,
   totalStaked: bigint,
-  timeForEmissions: bigint,
-  livenessPeriod: bigint,
+  epochLength: bigint,
   numActiveServices: number
 ): number => {
   // Early return if essential values are missing or zero
-  if (totalStaked === 0n || rewardsPerSecond === 0n) {
+  if (totalStaked === 0n || rewardsPerSecond === 0n || epochLength === 0n) {
     return 0;
   }
-
-  // If timeForEmissions or livenessPeriod are 0, use default values
-  // Assuming a default period of 1 day for emissions and 1 hour for liveness
-  const effectiveTimeForEmissions =
-    timeForEmissions === 0n ? 86400n : timeForEmissions;
-  const effectiveLivenessPeriod =
-    livenessPeriod === 0n ? 3600n : livenessPeriod;
 
   // Use max of 1 for numActiveServices to avoid division by zero
   const effectiveNumServices = Math.max(1, numActiveServices);
 
-  const periodLength = effectiveTimeForEmissions + effectiveLivenessPeriod;
   const SECONDS_PER_YEAR = 31536000n;
   const PRECISION = 10000n;
 
-  const periodsPerYear = SECONDS_PER_YEAR / periodLength;
-  const activeTimePerYear = periodsPerYear * effectiveTimeForEmissions;
-  const annualRewards = (rewardsPerSecond * activeTimePerYear * PRECISION) / 1n;
+  const epochsPerYear = SECONDS_PER_YEAR / epochLength;
+  const annualRewards = (rewardsPerSecond * epochsPerYear * PRECISION) / 1n;
   const rewardsPerService = annualRewards / BigInt(effectiveNumServices);
   const apy =
     Number((rewardsPerService * 100n) / totalStaked) / Number(PRECISION);
@@ -618,10 +608,21 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
   const positionId = `${instanceAddress}-${depositorAddress}`;
 
   try {
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      totalStaked: event.args.balance,
-      lastApyUpdate: Number(event.block.timestamp),
+    const instance = await context.db.find(StakingInstance, {
+      id: instanceAddress,
     });
+    if (instance) {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        totalStaked: event.args.balance,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          event.args.balance,
+          instance.epochLength ?? 0n,
+          instance.numActiveServices ?? 0
+        ),
+        lastApyUpdate: Number(event.block.timestamp),
+      });
+    }
 
     const existingPosition = await context.db.sql
       .select()
@@ -640,23 +641,6 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
       });
     } catch (e) {
       console.error(`Error updating deposit for ${instanceAddress}:`, e);
-    }
-
-    const instance = await context.db.find(StakingInstance, {
-      id: instanceAddress,
-    });
-    if (instance) {
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        totalStaked: event.args.balance,
-        rawApy: calculateRawApy(
-          instance.rewardsPerSecond ?? 0n,
-          event.args.balance,
-          BigInt(instance.timeForEmissions || 0),
-          BigInt(instance.livenessPeriod || 0),
-          instance.numActiveServices ?? 0
-        ),
-        lastApyUpdate: Number(event.block.timestamp),
-      });
     }
   } catch (e) {
     console.error(`Error updating deposit for ${instanceAddress}:`, e);
@@ -682,8 +666,7 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
       rawApy: calculateRawApy(
         instance.rewardsPerSecond ?? 0n,
         instance.totalStaked ?? 0n,
-        BigInt(instance.timeForEmissions || 0),
-        BigInt(instance.livenessPeriod || 0),
+        instance.epochLength ?? 0n,
         newServiceIds.length
       ),
     });
@@ -730,8 +713,7 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
       rawApy: calculateRawApy(
         instance.rewardsPerSecond ?? 0n,
         instance.totalStaked ?? 0n,
-        BigInt(instance.timeForEmissions || 0),
-        BigInt(instance.livenessPeriod || 0),
+        instance.epochLength ?? 0n,
         newServiceIds.length
       ),
     });
@@ -772,9 +754,8 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
           newTotalStaked,
-          BigInt(instance.timeForEmissions ?? 0),
-          BigInt(instance.livenessPeriod ?? 0),
-          instance.numActiveServices ?? 0
+          instance.epochLength ?? 0n,
+          instance?.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
       });
@@ -844,17 +825,14 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
     });
 
     if (instance) {
-      const timeForEmissions = BigInt(instance.timeForEmissions || 0);
-      const livenessPeriod = BigInt(instance.livenessPeriod || 0);
-      const epochLength = timeForEmissions + livenessPeriod;
+      const epochLength = event.args.epochLength;
 
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
         epochLength,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
           instance.totalStaked ?? 0n,
-          timeForEmissions,
-          livenessPeriod,
+          epochLength,
           instance.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
