@@ -926,19 +926,13 @@ ponder.on(
 
     try {
       const { client } = context;
-      const { StakingContracts } = context.contracts;
-
-      // Create contract instance once
       const stakingContract = {
-        abi: StakingContracts.abi,
+        abi: context.contracts.StakingContracts.abi,
         address: instanceAddress as `0x${string}`,
       };
 
       // Helper function for safe contract reads
-      const safeContractRead = async (
-        functionName: any,
-        fallbackValue: any
-      ) => {
+      const safeRead = async (functionName: any, fallbackValue: any) => {
         try {
           return await client.readContract({
             ...stakingContract,
@@ -953,51 +947,39 @@ ponder.on(
         }
       };
 
-      const [basicConfig, periodConfig, tokenConfig, agentConfig] =
-        await Promise.all([
-          // Basic configuration
-          Promise.all([
-            safeContractRead("maxNumServices", 0n),
-            safeContractRead("minStakingDeposit", 0n),
-            safeContractRead("configHash", "0x"),
-            safeContractRead("threshold", 0n),
-          ]),
-          // Period configurations
-          Promise.all([
-            safeContractRead("maxNumInactivityPeriods", 0n),
-            safeContractRead("minStakingDuration", 0n),
-            safeContractRead("livenessPeriod", 0n),
-            safeContractRead("timeForEmissions", 0n),
-          ]),
-          // Token related
-          Promise.all([
-            safeContractRead("rewardsPerSecond", 0n),
-            safeContractRead(
-              "stakingToken",
-              "0x0000000000000000000000000000000000000000"
-            ),
-          ]),
-          // Agent related
-          Promise.all([
-            safeContractRead("getAgentIds", []),
-            safeContractRead("numAgentInstances", 0n),
-            safeContractRead(
-              "activityChecker",
-              "0x0000000000000000000000000000000000000000"
-            ),
-          ]),
-        ]);
-
-      const [maxNumServices, minStakingDeposit, configHash, multisigThreshold] =
-        basicConfig;
+      // Execute all reads in parallel with safe fallbacks
       const [
+        maxNumServices,
+        minStakingDeposit,
+        configHash,
+        multisigThreshold,
         maxInactivityPeriods,
         minStakingPeriods,
         livenessPeriod,
         timeForEmissions,
-      ] = periodConfig;
-      const [rewardsPerSecond, stakingToken] = tokenConfig;
-      const [agentIds, numAgentInstances, activityCheckerAddress] = agentConfig;
+        rewardsPerSecond,
+        stakingToken,
+        agentIds,
+        numAgentInstances,
+        activityCheckerAddress,
+      ] = await Promise.all([
+        safeRead("maxNumServices", 0n),
+        safeRead("minStakingDeposit", 0n),
+        safeRead("configHash", "0x"),
+        safeRead("threshold", 0n),
+        safeRead("maxNumInactivityPeriods", 0n),
+        safeRead("minStakingDuration", 0n),
+        safeRead("livenessPeriod", 0n),
+        safeRead("timeForEmissions", 0n),
+        safeRead("rewardsPerSecond", 0n),
+        safeRead("stakingToken", "0x0000000000000000000000000000000000000000"),
+        safeRead("getAgentIds", []),
+        safeRead("numAgentInstances", 0n),
+        safeRead(
+          "activityChecker",
+          "0x0000000000000000000000000000000000000000"
+        ),
+      ]);
 
       await context.db
         .insert(StakingInstance)
@@ -1013,7 +995,7 @@ ponder.on(
           rewardsPerSecond,
           stakingToken,
           agentIds: Array.isArray(agentIds)
-            ? agentIds.map((id: any) => id.toString())
+            ? agentIds.map((id) => id.toString())
             : [],
           minStakingDeposit,
           maxInactivityPeriods: Number(maxInactivityPeriods),
