@@ -843,14 +843,18 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
       id: instanceAddress,
     });
 
-    if (instance?.timeForEmissions && instance?.livenessPeriod) {
+    if (instance) {
+      const timeForEmissions = BigInt(instance.timeForEmissions || 0);
+      const livenessPeriod = BigInt(instance.livenessPeriod || 0);
+      const epochLength = timeForEmissions + livenessPeriod;
+
       await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        epochLength: BigInt(event.args.epochLength.toString()),
+        epochLength,
         rawApy: calculateRawApy(
           instance.rewardsPerSecond ?? 0n,
           instance.totalStaked ?? 0n,
-          BigInt(instance.timeForEmissions),
-          BigInt(instance.livenessPeriod),
+          timeForEmissions,
+          livenessPeriod,
           instance.numActiveServices ?? 0
         ),
         lastApyUpdate: Number(event.block.timestamp),
