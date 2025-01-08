@@ -582,32 +582,33 @@ const calculateRawApy = (
   livenessPeriod: bigint,
   numActiveServices: number
 ): number => {
-  if (
-    totalStaked === 0n ||
-    timeForEmissions === 0n ||
-    livenessPeriod === 0n ||
-    numActiveServices === 0
-  ) {
+  // Early return if essential values are missing or zero
+  if (totalStaked === 0n || rewardsPerSecond === 0n) {
     return 0;
   }
 
-  const periodLength = timeForEmissions + livenessPeriod;
-  if (periodLength === 0n) {
-    return 0;
-  }
+  // If timeForEmissions or livenessPeriod are 0, use default values
+  // Assuming a default period of 1 day for emissions and 1 hour for liveness
+  const effectiveTimeForEmissions =
+    timeForEmissions === 0n ? 86400n : timeForEmissions;
+  const effectiveLivenessPeriod =
+    livenessPeriod === 0n ? 3600n : livenessPeriod;
 
+  // Use max of 1 for numActiveServices to avoid division by zero
+  const effectiveNumServices = Math.max(1, numActiveServices);
+
+  const periodLength = effectiveTimeForEmissions + effectiveLivenessPeriod;
   const SECONDS_PER_YEAR = 31536000n;
   const PRECISION = 10000n;
 
   const periodsPerYear = SECONDS_PER_YEAR / periodLength;
-  const activeTimePerYear = periodsPerYear * timeForEmissions;
+  const activeTimePerYear = periodsPerYear * effectiveTimeForEmissions;
   const annualRewards = (rewardsPerSecond * activeTimePerYear * PRECISION) / 1n;
-  // Divide by number of active services since rewards are shared
-  const rewardsPerService = annualRewards / BigInt(numActiveServices);
+  const rewardsPerService = annualRewards / BigInt(effectiveNumServices);
   const apy =
     Number((rewardsPerService * 100n) / totalStaked) / Number(PRECISION);
 
-  return Math.round(apy * 100) / 100;
+  return Math.max(0, Math.round(apy * 100) / 100);
 };
 
 // Handle deposits
