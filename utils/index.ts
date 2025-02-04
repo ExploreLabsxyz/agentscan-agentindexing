@@ -140,7 +140,7 @@ export async function fetchMetadata(
   }
 
   try {
-    const metadata = await fetchAndTransformMetadata(hash, 2, { type, id });
+    const metadata = await fetchAndTransformMetadata(hash, 7, { type, id });
     if (metadata) {
       console.log(`Metadata fetched for ${type} ${id}:`);
       return metadata;
@@ -229,18 +229,9 @@ const PROXY_PATTERNS: Record<string, ProxyPattern> = {
   },
 } as const;
 
-const isValidAddress = (address: string): boolean => {
-  return Boolean(
-    address &&
-      address !== "0x" &&
-      address.toLowerCase() !== "0x0000000000000000000000000000000000000000" &&
-      /^0x[a-fA-F0-9]{40}$/.test(address.toLowerCase())
-  );
-};
-
 export const fetchAndTransformMetadata = async (
   configHash: string,
-  maxRetries = 2,
+  maxRetries = 5,
   configInfo: ConfigInfo
 ): Promise<MetadataJson | null> => {
   const metadataPrefix = "f01701220";
