@@ -24,10 +24,12 @@ const createDefaultService = (
   chain: string,
   blockNumber: number,
   timestamp: number,
-  configHash?: string | null
+  configHash?: string | null,
+  tokenId?: number
 ) => ({
   id: serviceId,
   chain,
+  tokenId,
   securityDeposit: 0n,
   multisig: "0x" as `0x${string}`,
   configHash,
@@ -188,6 +190,7 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
     .insert(Component)
     .values(updateData)
     .onConflictDoUpdate({
+      tokenId: updateData.tokenId,
       name: updateData.name,
       description: updateData.description,
       image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
@@ -214,6 +217,7 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
         .insert(Component)
         .values({
           id: componentId,
+          tokenId: Number(event.args.id),
           operator: event.args.to.toString(),
           name: null,
           description: null,
@@ -225,7 +229,10 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
           metadataHash: null,
           metadataURI: null,
         })
-        .onConflictDoUpdate({ operator: event.args.to.toString() });
+        .onConflictDoUpdate({
+          operator: event.args.to.toString(),
+          tokenId: Number(event.args.id),
+        });
     } catch (e) {
       console.error("Error inserting new component:", e);
     }
@@ -304,13 +311,16 @@ CONTRACT_NAMES.forEach((contractName) => {
             serviceId,
             chain,
             Number(event.block.number),
-            Number(event.block.timestamp)
+            Number(event.block.timestamp),
+            null,
+            Number(event.args.serviceId)
           );
           await context.db
             .insert(Service)
             .values({ ...defaultService, state: "REGISTERED" })
             .onConflictDoUpdate({
               state: "REGISTERED",
+              tokenId: defaultService.tokenId,
             });
         } catch (insertError) {
           console.error(
@@ -403,12 +413,17 @@ CONTRACT_NAMES.forEach((contractName) => {
           serviceId,
           chain,
           Number(event.block.number),
-          Number(event.block.timestamp)
+          Number(event.block.timestamp),
+          null,
+          Number(event.args.serviceId)
         );
         await context.db
           .insert(Service)
           .values({ ...defaultService, state: "DEPLOYED" })
-          .onConflictDoUpdate({ state: "DEPLOYED" });
+          .onConflictDoUpdate({
+            state: "DEPLOYED",
+            tokenId: defaultService.tokenId,
+          });
       } catch (insertError) {
         console.error("Error in DeployService fallback handler:", insertError);
       }
@@ -435,7 +450,9 @@ CONTRACT_NAMES.forEach((contractName) => {
             serviceId,
             chain,
             Number(event.block.number),
-            Number(event.block.timestamp)
+            Number(event.block.timestamp),
+            null,
+            Number(event.args.serviceId)
           );
           await context.db
             .insert(Service)
@@ -469,7 +486,9 @@ CONTRACT_NAMES.forEach((contractName) => {
           serviceId,
           chain,
           Number(event.block.number),
-          Number(event.block.timestamp)
+          Number(event.block.timestamp),
+          null,
+          Number(event.args.serviceId)
         );
         await context.db
           .insert(Service)
@@ -519,7 +538,8 @@ CONTRACT_NAMES.forEach((contractName) => {
           chain,
           Number(event.block.number),
           Number(event.block.timestamp),
-          event.args.configHash
+          event.args.configHash,
+          Number(event.args.serviceId)
         );
         await context.db
           .insert(Service)
@@ -558,7 +578,9 @@ CONTRACT_NAMES.forEach((contractName) => {
           serviceId,
           chain,
           Number(event.block.number),
-          Number(event.block.timestamp)
+          Number(event.block.timestamp),
+          null,
+          Number(event.args.serviceId)
         );
         await context.db
           .insert(Service)
