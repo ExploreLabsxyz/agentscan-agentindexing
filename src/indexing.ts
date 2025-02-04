@@ -64,7 +64,7 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
 
   const updateData = {
     id: agentId,
-    tokenId: Number(event.args.unitId),
+    tokenId: Number(agentId),
     name: metadataJson.name,
     description: metadataJson.description,
     image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
@@ -82,6 +82,7 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
     .insert(Agent)
     .values(updateData)
     .onConflictDoUpdate({
+      tokenId: updateData.tokenId,
       name: updateData.name,
       description: updateData.description,
       image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
@@ -138,6 +139,7 @@ ponder.on(`MainnetAgentRegistry:Transfer`, async ({ event, context }) => {
         .insert(Agent)
         .values({
           id: agentId,
+          tokenId: Number(agentId),
           operator: event.args.to.toString(),
           name: null,
           description: null,
@@ -149,7 +151,10 @@ ponder.on(`MainnetAgentRegistry:Transfer`, async ({ event, context }) => {
           metadataHash: null,
           metadataURI: null,
         })
-        .onConflictDoUpdate({ operator: event.args.to.toString() });
+        .onConflictDoUpdate({
+          operator: event.args.to.toString(),
+          tokenId: Number(agentId),
+        });
     } catch (e) {
       console.error("Error inserting new agent:", e);
     }
@@ -172,7 +177,7 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
 
   const updateData = {
     id: componentId,
-    tokenId: Number(event.args.unitId),
+    tokenId: Number(componentId),
     name: metadataJson.name,
     description: metadataJson.description,
     image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
@@ -217,7 +222,7 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
         .insert(Component)
         .values({
           id: componentId,
-          tokenId: Number(event.args.id),
+          tokenId: Number(componentId),
           operator: event.args.to.toString(),
           name: null,
           description: null,
@@ -231,7 +236,7 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
         })
         .onConflictDoUpdate({
           operator: event.args.to.toString(),
-          tokenId: Number(event.args.id),
+          tokenId: Number(componentId),
         });
     } catch (e) {
       console.error("Error inserting new component:", e);
@@ -580,7 +585,7 @@ CONTRACT_NAMES.forEach((contractName) => {
           Number(event.block.number),
           Number(event.block.timestamp),
           null,
-          Number(event.args.serviceId)
+          Number(event.args.id)
         );
         await context.db
           .insert(Service)
