@@ -195,25 +195,20 @@ ponder.on(
       "component"
     );
 
-    if (!metadataJson) {
-      console.warn(`No metadata found for component ${componentId}`);
-      return;
-    }
-
     const updateData = {
       id: componentId,
       tokenId: Number(componentId),
-      name: metadataJson.name,
-      description: metadataJson.description,
-      image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
-      codeUri: metadataJson.codeUri
+      name: metadataJson?.name ?? null,
+      description: metadataJson?.description ?? null,
+      image: metadataJson?.image ? transformIpfsUrl(metadataJson.image) : null,
+      codeUri: metadataJson?.codeUri
         ? transformIpfsUrl(metadataJson.codeUri)
         : null,
       blockNumber: Number(event.block.number),
       timestamp: Number(event.block.timestamp),
-      packageHash: metadataJson.packageHash,
-      metadataHash: metadataJson.metadataHash,
-      metadataURI: metadataJson.metadataURI,
+      packageHash: metadataJson?.packageHash ?? null,
+      metadataHash: event.args.unitHash,
+      metadataURI: metadataJson?.metadataURI ?? null,
     };
 
     try {
@@ -245,43 +240,30 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
     fetchMetadata(event.args.unitHash, agentId, "agent"),
   ]);
 
-  if (!metadataJson) {
-    console.warn(`No metadata found for agent ${agentId}`);
-    return;
-  }
-
   const updateData = {
     id: agentId,
     tokenId: Number(agentId),
-    name: metadataJson.name,
-    description: metadataJson.description,
-    image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
-    codeUri: metadataJson.codeUri
+    name: metadataJson?.name ?? null,
+    description: metadataJson?.description ?? null,
+    image: metadataJson?.image ? transformIpfsUrl(metadataJson.image) : null,
+    codeUri: metadataJson?.codeUri
       ? transformIpfsUrl(metadataJson.codeUri)
       : null,
     blockNumber: Number(event.block.number),
     timestamp: Number(event.block.timestamp),
-    packageHash: metadataJson.packageHash,
-    metadataHash: metadataJson.metadataHash,
-    metadataURI: metadataJson.metadataURI,
+    packageHash: metadataJson?.packageHash ?? null,
+    metadataHash: metadataJson?.metadataHash ?? null,
+    metadataURI: metadataJson?.metadataURI ?? null,
   };
 
-  await context.db
-    .insert(Agent)
-    .values(updateData)
-    .onConflictDoUpdate({
-      tokenId: updateData.tokenId,
-      name: updateData.name,
-      description: updateData.description,
-      image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
-      codeUri: updateData.codeUri
-        ? transformIpfsUrl(updateData?.codeUri)
-        : null,
-      metadataURI: updateData.metadataURI,
-      packageHash: updateData.packageHash,
-      metadataHash: updateData.metadataHash,
+  try {
+    await retryOperation(async () => {
+      await context.db.update(Agent, { id: agentId }).set(updateData);
     });
-  console.log("Inserted agent:", updateData);
+    console.log("Updated agent:", updateData);
+  } catch (e) {
+    console.error("Error updating agent:", e);
+  }
 
   try {
     const { client } = context;
@@ -305,7 +287,13 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
 
       if (validDependencies.length > 0) {
         console.log(`Inserting dependencies for agent ${agentId}`);
-        await context.db.insert(ComponentAgent).values(validDependencies);
+        try {
+          await retryOperation(async () => {
+            await context.db.insert(ComponentAgent).values(validDependencies);
+          });
+        } catch (e) {
+          console.error("Error inserting component agent:", e);
+        }
       }
     }
   } catch (error) {
@@ -321,38 +309,30 @@ ponder.on(`MainnetAgentRegistry:Transfer`, async ({ event, context }) => {
   console.log(`Handling MainnetAgentRegistry:Transfer for agent ${agentId}`);
 
   try {
-    await context.db
-      .update(Agent, { id: agentId })
-      .set({ operator: event.args.to.toString() });
+    await retryOperation(async () => {
+      await context.db.insert(Agent).values({
+        id: agentId,
+        tokenId: Number(agentId),
+        operator: event.args.to.toString(),
+        name: null,
+        description: null,
+        image: null,
+        codeUri: null,
+        blockNumber: Number(event.block.number),
+        timestamp: Number(event.block.timestamp),
+        packageHash: null,
+        metadataHash: null,
+        metadataURI: null,
+      });
+    });
   } catch (e) {
     console.error("Error in AgentRegistry:Transfer:", e);
-    try {
-      await retryOperation(async () => {
-        await context.db
-          .insert(Agent)
-          .values({
-            id: agentId,
-            tokenId: Number(agentId),
-            operator: event.args.to.toString(),
-            name: null,
-            description: null,
-            image: null,
-            codeUri: null,
-            blockNumber: Number(event.block.number),
-            timestamp: Number(event.block.timestamp),
-            packageHash: null,
-            metadataHash: null,
-            metadataURI: null,
-          })
-          .onConflictDoUpdate({
-            operator: event.args.to.toString(),
-            tokenId: Number(agentId),
-          });
-      });
-      console.log("Inserted agent after failed update");
-    } catch (e) {
-      console.error("Error inserting new agent:", e);
-    }
+    //update the operator
+    await retryOperation(async () => {
+      await context.db
+        .update(Agent, { id: agentId })
+        .set({ operator: event.args.to.toString() });
+    });
   }
 });
 
@@ -365,48 +345,29 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
     fetchMetadata(event.args.unitHash, componentId, "component"),
   ]);
 
-  if (!metadataJson) {
-    console.warn(`No metadata found for component ${componentId}`);
-    return;
-  }
-
   const updateData = {
     id: componentId,
     tokenId: Number(componentId),
-    name: metadataJson.name,
-    description: metadataJson.description,
-    image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
-    codeUri: metadataJson.codeUri
+    name: metadataJson?.name ?? null,
+    description: metadataJson?.description ?? null,
+    image: metadataJson?.image ? transformIpfsUrl(metadataJson.image) : null,
+    codeUri: metadataJson?.codeUri
       ? transformIpfsUrl(metadataJson.codeUri)
       : null,
     blockNumber: Number(event.block.number),
     timestamp: Number(event.block.timestamp),
-    packageHash: metadataJson.packageHash,
-    metadataHash: metadataJson.metadataHash,
-    metadataURI: metadataJson.metadataURI,
+    packageHash: metadataJson?.packageHash ?? null,
+    metadataHash: metadataJson?.metadataHash ?? null,
+    metadataURI: metadataJson?.metadataURI ?? null,
   };
 
   try {
     await retryOperation(async () => {
-      await context.db
-        .insert(Component)
-        .values(updateData)
-        .onConflictDoUpdate({
-          tokenId: updateData.tokenId,
-          name: updateData.name,
-          description: updateData.description,
-          image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
-          codeUri: updateData.codeUri
-            ? transformIpfsUrl(updateData?.codeUri)
-            : null,
-          metadataHash: updateData.metadataHash,
-          metadataURI: updateData.metadataURI,
-          packageHash: updateData.packageHash,
-        });
+      await context.db.update(Component, { id: componentId }).set(updateData);
     });
-    console.log("Inserted component:", updateData);
+    console.log("Updated component:", updateData);
   } catch (e) {
-    console.error("Error inserting component:", e);
+    console.error("Error updating component:", e);
   }
 });
 
@@ -418,43 +379,28 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
 
   try {
     await retryOperation(async () => {
+      await context.db.insert(Component).values({
+        id: componentId,
+        tokenId: Number(componentId),
+        operator: event.args.to.toString(),
+        name: null,
+        description: null,
+        image: null,
+        codeUri: null,
+        blockNumber: Number(event.block.number),
+        timestamp: Number(event.block.timestamp),
+        packageHash: null,
+        metadataHash: null,
+        metadataURI: null,
+      });
+    });
+  } catch (e) {
+    console.error("Error in ComponentRegistry:Transfer:", e);
+    await retryOperation(async () => {
       await context.db
         .update(Component, { id: componentId })
         .set({ operator: event.args.to.toString() });
     });
-    console.log("Updated component:", {
-      id: componentId,
-      operator: event.args.to.toString(),
-    });
-  } catch (e) {
-    console.error("Error in ComponentRegistry:Transfer:", e);
-    try {
-      await retryOperation(async () => {
-        await context.db
-          .insert(Component)
-          .values({
-            id: componentId,
-            tokenId: Number(componentId),
-            operator: event.args.to.toString(),
-            name: null,
-            description: null,
-            image: null,
-            codeUri: null,
-            blockNumber: Number(event.block.number),
-            timestamp: Number(event.block.timestamp),
-            packageHash: null,
-            metadataHash: null,
-            metadataURI: null,
-          })
-          .onConflictDoUpdate({
-            operator: event.args.to.toString(),
-            tokenId: Number(componentId),
-          });
-      });
-      console.log("Inserted component after failed update");
-    } catch (e) {
-      console.error("Error inserting new component:", e);
-    }
   }
 });
 
