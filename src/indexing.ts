@@ -17,7 +17,6 @@ import {
   getChainName,
   transformIpfsUrl,
 } from "../utils";
-import { StakingTokenAbi } from "../abis/StakingToken";
 import { and, eq } from "ponder";
 
 const createDefaultService = (
@@ -63,6 +62,7 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
 
   const updateData = {
     id: agentId,
+    tokenId: Number(event.args.unitId),
     name: metadataJson.name,
     description: metadataJson.description,
     image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
@@ -170,6 +170,7 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
 
   const updateData = {
     id: componentId,
+    tokenId: Number(event.args.unitId),
     name: metadataJson.name,
     description: metadataJson.description,
     image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
@@ -340,6 +341,7 @@ CONTRACT_NAMES.forEach((contractName) => {
 
     const serviceData = {
       id: serviceId,
+      tokenId: Number(event.args.serviceId),
       chain,
       securityDeposit: 0n,
       multisig: "0x",

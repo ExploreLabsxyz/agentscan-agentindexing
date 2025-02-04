@@ -43,6 +43,7 @@ export const Service = onchainTable(
     image: t.text(),
     codeUri: t.text(),
     owner: t.text(),
+    tokenId: t.integer(),
   }),
   (table) => ({
     idx: index().on(table.id),
@@ -56,6 +57,7 @@ export const Service = onchainTable(
     imageIdx: index().on(table.image),
     codeUriIdx: index().on(table.codeUri),
     ownerIdx: index().on(table.owner),
+    tokenIdIdx: index().on(table.tokenId),
   })
 );
 
@@ -73,6 +75,7 @@ export const Agent = onchainTable(
     metadataURI: t.text(),
     packageHash: t.text(),
     operator: t.text(),
+    tokenId: t.integer(),
   }),
   (table) => ({
     idx: index().on(table.id),
@@ -85,6 +88,7 @@ export const Agent = onchainTable(
     descriptionIdx: index().on(table.description),
     imageIdx: index().on(table.image),
     codeUriIdx: index().on(table.codeUri),
+    tokenIdIdx: index().on(table.tokenId),
   })
 );
 
@@ -118,6 +122,7 @@ export const Component = onchainTable(
     metadataURI: t.text(),
     packageHash: t.text(),
     operator: t.text(),
+    tokenId: t.integer(),
   }),
   (table) => ({
     idx: index().on(table.id),
@@ -130,6 +135,7 @@ export const Component = onchainTable(
     imageIdx: index().on(table.image),
     codeUriIdx: index().on(table.codeUri),
     operatorIdx: index().on(table.operator),
+    tokenIdIdx: index().on(table.tokenId),
   })
 );
 
