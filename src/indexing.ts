@@ -74,7 +74,7 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
     blockNumber: Number(event.block.number),
     timestamp: Number(event.block.timestamp),
     packageHash: metadataJson.packageHash,
-    metadataHash: event.args.unitHash,
+    metadataHash: metadataJson.metadataHash,
     metadataURI: metadataJson.metadataURI,
   };
 
@@ -89,6 +89,9 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
       codeUri: updateData.codeUri
         ? transformIpfsUrl(updateData?.codeUri)
         : null,
+      metadataURI: updateData.metadataURI,
+      packageHash: updateData.packageHash,
+      metadataHash: updateData.metadataHash,
     });
 
   try {
@@ -187,7 +190,7 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
     blockNumber: Number(event.block.number),
     timestamp: Number(event.block.timestamp),
     packageHash: metadataJson.packageHash,
-    metadataHash: event.args.unitHash,
+    metadataHash: metadataJson.metadataHash,
     metadataURI: metadataJson.metadataURI,
   };
 
@@ -202,6 +205,9 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
       codeUri: updateData.codeUri
         ? transformIpfsUrl(updateData?.codeUri)
         : null,
+      metadataHash: updateData.metadataHash,
+      metadataURI: updateData.metadataURI,
+      packageHash: updateData.packageHash,
     });
 });
 
@@ -374,7 +380,7 @@ CONTRACT_NAMES.forEach((contractName) => {
         ? transformIpfsUrl(metadataJson?.codeUri)
         : null,
       metadataURI: metadataJson?.metadataURI,
-      packageHash,
+      packageHash: metadataJson?.packageHash,
       metadataHash: event.args.configHash,
       timestamp: Number(event.block.timestamp),
     };
@@ -521,11 +527,7 @@ CONTRACT_NAMES.forEach((contractName) => {
         serviceId,
         "service"
       );
-      const packageHash = metadataJson?.packageHash;
       await context.db.update(Service, { id: serviceId }).set({
-        metadataURI: metadataJson?.metadataURI,
-        packageHash,
-        metadataHash: event.args.configHash,
         name: metadataJson?.name,
         description: metadataJson?.description,
         image: metadataJson?.image
@@ -534,6 +536,9 @@ CONTRACT_NAMES.forEach((contractName) => {
         codeUri: metadataJson?.codeUri
           ? transformIpfsUrl(metadataJson?.codeUri)
           : null,
+        metadataHash: metadataJson?.metadataHash,
+        packageHash: metadataJson?.packageHash,
+        metadataURI: metadataJson?.metadataURI,
       });
     } catch (e) {
       console.error("Error updating service, attempting creation!!:", e);

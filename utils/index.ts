@@ -141,7 +141,11 @@ export async function fetchMetadata(
 
   try {
     const metadata = await fetchAndTransformMetadata(hash, 2, { type, id });
-    return metadata || getDefaultMetadata(type, id);
+    if (metadata) {
+      console.log(`Metadata fetched for ${type} ${id}:`, metadata);
+      return metadata;
+    }
+    return getDefaultMetadata(type, id);
   } catch (error) {
     console.error(
       `Metadata fetch failed for ${type} ${id} with hash ${hash}:`,
@@ -244,6 +248,8 @@ export const fetchAndTransformMetadata = async (
   const ipfsURL = "https://gateway.autonolas.tech/ipfs/";
   const metadataURI = `${ipfsURL}${metadataPrefix}${finishedConfigHash}`;
 
+  console.log(`Fetching metadata for ${configInfo.id} from ${metadataURI}`);
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const { data } = await axiosInstance.get<any>(metadataURI);
@@ -269,7 +275,9 @@ export const fetchAndTransformMetadata = async (
           data.packageHash
         ),
         metadataURI,
+        metadataHash: configHash,
       };
+      console.log(`Metadata JSON for ${configInfo.id}:`, metadataJson);
       try {
         // if (metadataJson.packageHash && configInfo.type === "agent") {
         //   void processPackageDownload(metadataJson.packageHash, configInfo.id);
