@@ -281,6 +281,7 @@ ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
       packageHash: updateData.packageHash,
       metadataHash: updateData.metadataHash,
     });
+  console.log("Inserted agent:", updateData);
 
   try {
     const { client } = context;
@@ -326,26 +327,29 @@ ponder.on(`MainnetAgentRegistry:Transfer`, async ({ event, context }) => {
   } catch (e) {
     console.error("Error in AgentRegistry:Transfer:", e);
     try {
-      await context.db
-        .insert(Agent)
-        .values({
-          id: agentId,
-          tokenId: Number(agentId),
-          operator: event.args.to.toString(),
-          name: null,
-          description: null,
-          image: null,
-          codeUri: null,
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-          packageHash: null,
-          metadataHash: null,
-          metadataURI: null,
-        })
-        .onConflictDoUpdate({
-          operator: event.args.to.toString(),
-          tokenId: Number(agentId),
-        });
+      await retryOperation(async () => {
+        await context.db
+          .insert(Agent)
+          .values({
+            id: agentId,
+            tokenId: Number(agentId),
+            operator: event.args.to.toString(),
+            name: null,
+            description: null,
+            image: null,
+            codeUri: null,
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
+            packageHash: null,
+            metadataHash: null,
+            metadataURI: null,
+          })
+          .onConflictDoUpdate({
+            operator: event.args.to.toString(),
+            tokenId: Number(agentId),
+          });
+      });
+      console.log("Inserted agent after failed update");
     } catch (e) {
       console.error("Error inserting new agent:", e);
     }
@@ -382,21 +386,28 @@ ponder.on(`MainnetComponentRegistry:CreateUnit`, async ({ event, context }) => {
     metadataURI: metadataJson.metadataURI,
   };
 
-  await context.db
-    .insert(Component)
-    .values(updateData)
-    .onConflictDoUpdate({
-      tokenId: updateData.tokenId,
-      name: updateData.name,
-      description: updateData.description,
-      image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
-      codeUri: updateData.codeUri
-        ? transformIpfsUrl(updateData?.codeUri)
-        : null,
-      metadataHash: updateData.metadataHash,
-      metadataURI: updateData.metadataURI,
-      packageHash: updateData.packageHash,
+  try {
+    await retryOperation(async () => {
+      await context.db
+        .insert(Component)
+        .values(updateData)
+        .onConflictDoUpdate({
+          tokenId: updateData.tokenId,
+          name: updateData.name,
+          description: updateData.description,
+          image: updateData.image ? transformIpfsUrl(updateData?.image) : null,
+          codeUri: updateData.codeUri
+            ? transformIpfsUrl(updateData?.codeUri)
+            : null,
+          metadataHash: updateData.metadataHash,
+          metadataURI: updateData.metadataURI,
+          packageHash: updateData.packageHash,
+        });
     });
+    console.log("Inserted component:", updateData);
+  } catch (e) {
+    console.error("Error inserting component:", e);
+  }
 });
 
 ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
@@ -410,6 +421,10 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
       await context.db
         .update(Component, { id: componentId })
         .set({ operator: event.args.to.toString() });
+    });
+    console.log("Updated component:", {
+      id: componentId,
+      operator: event.args.to.toString(),
     });
   } catch (e) {
     console.error("Error in ComponentRegistry:Transfer:", e);
@@ -436,6 +451,7 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
             tokenId: Number(componentId),
           });
       });
+      console.log("Inserted component after failed update");
     } catch (e) {
       console.error("Error inserting new component:", e);
     }
