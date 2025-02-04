@@ -50,6 +50,47 @@ const createDefaultService = (
   owner: null,
 });
 
+const retryOperation = async <T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 5,
+  delay: number = 1000
+): Promise<T> => {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      // Check if it's the "too many clients" error
+      if (
+        error instanceof Error &&
+        error.message.includes("too many clients")
+      ) {
+        if (attempt === maxRetries) {
+          console.error(
+            `Final retry attempt failed after ${maxRetries} attempts:`,
+            error
+          );
+          throw error;
+        }
+
+        console.warn(
+          `Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay * attempt)); // Exponential backoff
+        continue;
+      }
+
+      // If it's not a "too many clients" error, throw immediately
+      throw error;
+    }
+  }
+
+  throw lastError;
+};
+
 ponder.on(`MainnetAgentRegistry:UpdateUnitHash`, async ({ event, context }) => {
   const agentId = event.args.unitId.toString();
 
@@ -81,12 +122,16 @@ ponder.on(`MainnetAgentRegistry:UpdateUnitHash`, async ({ event, context }) => {
   };
 
   try {
-    await context.db.update(Agent, { id: agentId }).set(updateData);
+    await retryOperation(async () => {
+      await context.db.update(Agent, { id: agentId }).set(updateData);
+    });
   } catch (e) {
     console.error("Error updating agent:", e);
     try {
-      await context.db.insert(Agent).values(updateData).onConflictDoUpdate({
-        tokenId: updateData.tokenId,
+      await retryOperation(async () => {
+        await context.db.insert(Agent).values(updateData).onConflictDoUpdate({
+          tokenId: updateData.tokenId,
+        });
       });
     } catch (e) {
       console.error("Error inserting new agent:", e);
@@ -116,7 +161,9 @@ ponder.on(`MainnetAgentRegistry:UpdateUnitHash`, async ({ event, context }) => {
       if (validDependencies.length > 0) {
         console.log(`Inserting dependencies for agent ${agentId}`);
         try {
-          await context.db.insert(ComponentAgent).values(validDependencies);
+          await retryOperation(async () => {
+            await context.db.insert(ComponentAgent).values(validDependencies);
+          });
         } catch (e) {
           console.error("Error inserting component agent:", e);
         }
@@ -170,16 +217,20 @@ ponder.on(
     };
 
     try {
-      await context.db.update(Component, { id: componentId }).set(updateData);
+      await retryOperation(async () => {
+        await context.db.update(Component, { id: componentId }).set(updateData);
+      });
     } catch (e) {
       console.error("Error updating component:", e);
       try {
-        await context.db
-          .insert(Component)
-          .values(updateData)
-          .onConflictDoUpdate({
-            tokenId: updateData.tokenId,
-          });
+        await retryOperation(async () => {
+          await context.db
+            .insert(Component)
+            .values(updateData)
+            .onConflictDoUpdate({
+              tokenId: updateData.tokenId,
+            });
+        });
       } catch (e) {
         console.error("Error inserting new component:", e);
       }
@@ -355,32 +406,36 @@ ponder.on(`MainnetComponentRegistry:Transfer`, async ({ event, context }) => {
   );
 
   try {
-    await context.db
-      .update(Component, { id: componentId })
-      .set({ operator: event.args.to.toString() });
+    await retryOperation(async () => {
+      await context.db
+        .update(Component, { id: componentId })
+        .set({ operator: event.args.to.toString() });
+    });
   } catch (e) {
     console.error("Error in ComponentRegistry:Transfer:", e);
     try {
-      await context.db
-        .insert(Component)
-        .values({
-          id: componentId,
-          tokenId: Number(componentId),
-          operator: event.args.to.toString(),
-          name: null,
-          description: null,
-          image: null,
-          codeUri: null,
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-          packageHash: null,
-          metadataHash: null,
-          metadataURI: null,
-        })
-        .onConflictDoUpdate({
-          operator: event.args.to.toString(),
-          tokenId: Number(componentId),
-        });
+      await retryOperation(async () => {
+        await context.db
+          .insert(Component)
+          .values({
+            id: componentId,
+            tokenId: Number(componentId),
+            operator: event.args.to.toString(),
+            name: null,
+            description: null,
+            image: null,
+            codeUri: null,
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
+            packageHash: null,
+            metadataHash: null,
+            metadataURI: null,
+          })
+          .onConflictDoUpdate({
+            operator: event.args.to.toString(),
+            tokenId: Number(componentId),
+          });
+      });
     } catch (e) {
       console.error("Error inserting new component:", e);
     }
@@ -399,84 +454,94 @@ CONTRACT_NAMES.forEach((contractName) => {
 
     //first insert the agent instance if it doesn't exist
     try {
-      await context.db
-        .insert(Agent)
-        .values({
-          id: agentId,
-          name: null,
-          description: null,
-          image: null,
-          codeUri: null,
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-          metadataHash: null,
-          metadataURI: null,
-          packageHash: null,
-          operator: null,
-        })
-        .onConflictDoNothing();
+      await retryOperation(async () => {
+        await context.db
+          .insert(Agent)
+          .values({
+            id: agentId,
+            name: null,
+            description: null,
+            image: null,
+            codeUri: null,
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
+            metadataHash: null,
+            metadataURI: null,
+            packageHash: null,
+            operator: null,
+          })
+          .onConflictDoNothing();
+      });
     } catch (e) {
       console.error("Error inserting agent:", e);
     }
     try {
-      await context.db
-        .insert(AgentInstance)
-        .values({
-          id: agentInstanceId,
-          agentId,
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-        })
-        .onConflictDoUpdate({
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-        });
-
-      try {
+      await retryOperation(async () => {
         await context.db
-          .update(Service, { id: serviceId })
-          .set({ state: "REGISTERED" });
-      } catch (e) {
-        console.error("Error updating service state:", e);
-      }
-
-      try {
-        await context.db
-          .insert(ServiceAgent)
+          .insert(AgentInstance)
           .values({
-            id: `${serviceId}-${agentInstanceId}`,
-            serviceId,
-            agentInstanceId,
+            id: agentInstanceId,
+            agentId,
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
           })
           .onConflictDoUpdate({
-            serviceId,
-            agentInstanceId,
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
           });
-      } catch (e) {
-        console.error("Error inserting service agent connection:", e);
+
         try {
-          const defaultService = createDefaultService(
-            serviceId,
-            chain,
-            Number(event.block.number),
-            Number(event.block.timestamp),
-            null,
-            Number(event.args.serviceId)
-          );
-          await context.db
-            .insert(Service)
-            .values({ ...defaultService, state: "REGISTERED" })
-            .onConflictDoUpdate({
-              state: "REGISTERED",
-              tokenId: defaultService.tokenId,
-            });
-        } catch (insertError) {
-          console.error(
-            "Error in RegisterInstance fallback handler:",
-            insertError
-          );
+          await retryOperation(async () => {
+            await context.db
+              .update(Service, { id: serviceId })
+              .set({ state: "REGISTERED" });
+          });
+        } catch (e) {
+          console.error("Error updating service state:", e);
         }
-      }
+
+        try {
+          await retryOperation(async () => {
+            await context.db
+              .insert(ServiceAgent)
+              .values({
+                id: `${serviceId}-${agentInstanceId}`,
+                serviceId,
+                agentInstanceId,
+              })
+              .onConflictDoUpdate({
+                serviceId,
+                agentInstanceId,
+              });
+          });
+        } catch (e) {
+          console.error("Error inserting service agent connection:", e);
+          try {
+            const defaultService = createDefaultService(
+              serviceId,
+              chain,
+              Number(event.block.number),
+              Number(event.block.timestamp),
+              null,
+              Number(event.args.serviceId)
+            );
+            await retryOperation(async () => {
+              await context.db
+                .insert(Service)
+                .values({ ...defaultService, state: "REGISTERED" })
+                .onConflictDoUpdate({
+                  state: "REGISTERED",
+                  tokenId: defaultService.tokenId,
+                });
+            });
+          } catch (insertError) {
+            console.error(
+              "Error in RegisterInstance fallback handler:",
+              insertError
+            );
+          }
+        }
+      });
     } catch (e) {
       console.error("Error in RegisterInstance handler:", e);
     }
@@ -565,13 +630,15 @@ CONTRACT_NAMES.forEach((contractName) => {
           null,
           Number(event.args.serviceId)
         );
-        await context.db
-          .insert(Service)
-          .values({ ...defaultService, state: "DEPLOYED" })
-          .onConflictDoUpdate({
-            state: "DEPLOYED",
-            tokenId: defaultService.tokenId,
-          });
+        await retryOperation(async () => {
+          await context.db
+            .insert(Service)
+            .values({ ...defaultService, state: "DEPLOYED" })
+            .onConflictDoUpdate({
+              state: "DEPLOYED",
+              tokenId: defaultService.tokenId,
+            });
+        });
       } catch (insertError) {
         console.error("Error in DeployService fallback handler:", insertError);
       }
@@ -588,9 +655,11 @@ CONTRACT_NAMES.forEach((contractName) => {
       );
 
       try {
-        await context.db
-          .update(Service, { id: serviceId })
-          .set({ multisig: event.args.multisig });
+        await retryOperation(async () => {
+          await context.db
+            .update(Service, { id: serviceId })
+            .set({ multisig: event.args.multisig });
+        });
       } catch (e) {
         console.error("Error updating service, attempting creation:", e);
         try {
@@ -602,10 +671,12 @@ CONTRACT_NAMES.forEach((contractName) => {
             null,
             Number(event.args.serviceId)
           );
-          await context.db
-            .insert(Service)
-            .values({ ...defaultService, multisig: event.args.multisig })
-            .onConflictDoUpdate({ multisig: event.args.multisig });
+          await retryOperation(async () => {
+            await context.db
+              .insert(Service)
+              .values({ ...defaultService, multisig: event.args.multisig })
+              .onConflictDoUpdate({ multisig: event.args.multisig });
+          });
         } catch (insertError) {
           console.error(
             "Error in CreateMultisigWithAgents fallback handler:",
@@ -624,9 +695,11 @@ CONTRACT_NAMES.forEach((contractName) => {
     );
 
     try {
-      await context.db
-        .update(Service, { id: serviceId })
-        .set({ state: "TERMINATED" });
+      await retryOperation(async () => {
+        await context.db
+          .update(Service, { id: serviceId })
+          .set({ state: "TERMINATED" });
+      });
     } catch (e) {
       console.error("Error updating service, attempting creation:", e);
       try {
@@ -638,10 +711,12 @@ CONTRACT_NAMES.forEach((contractName) => {
           null,
           Number(event.args.serviceId)
         );
-        await context.db
-          .insert(Service)
-          .values({ ...defaultService, state: "TERMINATED" })
-          .onConflictDoUpdate({ state: "TERMINATED" });
+        await retryOperation(async () => {
+          await context.db
+            .insert(Service)
+            .values({ ...defaultService, state: "TERMINATED" })
+            .onConflictDoUpdate({ state: "TERMINATED" });
+        });
       } catch (insertError) {
         console.error(
           "Error in TerminateService fallback handler:",
@@ -669,18 +744,20 @@ CONTRACT_NAMES.forEach((contractName) => {
     }
 
     try {
-      await context.db.update(Service, { id: serviceId }).set({
-        name: metadataJson?.name,
-        description: metadataJson?.description,
-        image: metadataJson?.image
-          ? transformIpfsUrl(metadataJson?.image)
-          : null,
-        codeUri: metadataJson?.codeUri
-          ? transformIpfsUrl(metadataJson?.codeUri)
-          : null,
-        metadataHash: metadataJson?.metadataHash,
-        packageHash: metadataJson?.packageHash,
-        metadataURI: metadataJson?.metadataURI,
+      await retryOperation(async () => {
+        await context.db.update(Service, { id: serviceId }).set({
+          name: metadataJson?.name,
+          description: metadataJson?.description,
+          image: metadataJson?.image
+            ? transformIpfsUrl(metadataJson?.image)
+            : null,
+          codeUri: metadataJson?.codeUri
+            ? transformIpfsUrl(metadataJson?.codeUri)
+            : null,
+          metadataHash: metadataJson?.metadataHash,
+          packageHash: metadataJson?.packageHash,
+          metadataURI: metadataJson?.metadataURI,
+        });
       });
     } catch (e) {
       console.error("Error updating service, attempting creation!!:", e);
@@ -712,15 +789,17 @@ CONTRACT_NAMES.forEach((contractName) => {
             metadataHash: event.args.configHash,
             timestamp: Number(event.block.timestamp),
           };
-          await context.db
-            .insert(Service)
-            .values({
-              ...serviceData,
-              multisig: serviceData.multisig as `0x${string}`,
-            })
-            .onConflictDoUpdate({
-              multisig: serviceData.multisig as `0x${string}`,
-            });
+          await retryOperation(async () => {
+            await context.db
+              .insert(Service)
+              .values({
+                ...serviceData,
+                multisig: serviceData.multisig as `0x${string}`,
+              })
+              .onConflictDoUpdate({
+                multisig: serviceData.multisig as `0x${string}`,
+              });
+          });
         }
       } catch (insertError) {
         console.error("Error in UpdateService fallback handler:", insertError);
@@ -741,9 +820,11 @@ CONTRACT_NAMES.forEach((contractName) => {
     );
 
     try {
-      await context.db
-        .update(Service, { id: serviceId })
-        .set({ owner: event.args.to.toLowerCase() });
+      await retryOperation(async () => {
+        await context.db
+          .update(Service, { id: serviceId })
+          .set({ owner: event.args.to.toLowerCase() });
+      });
     } catch (e) {
       console.error(`Error updating service ${serviceId} owner:`, e);
       try {
@@ -755,15 +836,17 @@ CONTRACT_NAMES.forEach((contractName) => {
           null,
           Number(event.args.id)
         );
-        await context.db
-          .insert(Service)
-          .values({
-            ...defaultService,
-            owner: event.args.to.toLowerCase(),
-          })
-          .onConflictDoUpdate({
-            owner: event.args.to.toLowerCase(),
-          });
+        await retryOperation(async () => {
+          await context.db
+            .insert(Service)
+            .values({
+              ...defaultService,
+              owner: event.args.to.toLowerCase(),
+            })
+            .onConflictDoUpdate({
+              owner: event.args.to.toLowerCase(),
+            });
+        });
       } catch (insertError) {
         console.error("Error in Transfer fallback handler:", insertError);
       }
@@ -805,36 +888,45 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
   const positionId = `${instanceAddress}-${depositorAddress}`;
 
   try {
-    const instance = await context.db.find(StakingInstance, {
-      id: instanceAddress,
-    });
+    const instance = await retryOperation(async () =>
+      context.db.find(StakingInstance, { id: instanceAddress })
+    );
+
     if (instance) {
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        totalStaked: event.args.balance,
-        rawApy: calculateRawApy(
-          instance.rewardsPerSecond ?? 0n,
-          event.args.balance,
-          instance.epochLength ?? 0n,
-          instance.numActiveServices ?? 0
-        ),
-        lastApyUpdate: Number(event.block.timestamp),
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
+          totalStaked: event.args.balance,
+          rawApy: calculateRawApy(
+            instance.rewardsPerSecond ?? 0n,
+            event.args.balance,
+            instance.epochLength ?? 0n,
+            instance.numActiveServices ?? 0
+          ),
+          lastApyUpdate: Number(event.block.timestamp),
+        });
       });
     }
 
-    const existingPosition = await context.db.sql
-      .select()
-      .from(StakingPosition)
-      .where(eq(StakingPosition.id, positionId));
+    const existingPosition = await retryOperation(async () =>
+      context.db.sql
+        .select()
+        .from(StakingPosition)
+        .where(eq(StakingPosition.id, positionId))
+    );
+
     if (!existingPosition) {
       console.warn(
         `No staking position found for ${positionId}, skipping deposit`
       );
       return;
     }
+
     try {
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        amount: (existingPosition[0]?.amount ?? 0n) + event.args.amount,
-        lastUpdateTimestamp: Number(event.block.timestamp),
+      await retryOperation(async () => {
+        await context.db.update(StakingPosition, { id: positionId }).set({
+          amount: (existingPosition[0]?.amount ?? 0n) + event.args.amount,
+          lastUpdateTimestamp: Number(event.block.timestamp),
+        });
       });
     } catch (e) {
       console.error(`Error updating deposit for ${instanceAddress}:`, e);
@@ -847,9 +939,11 @@ ponder.on("StakingContracts:Deposit", async ({ event, context }) => {
 // Handle service staking
 ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
-  const instance = await context.db.find(StakingInstance, {
-    id: instanceAddress,
-  });
+  const instance = await retryOperation(async () =>
+    context.db.find(StakingInstance, {
+      id: instanceAddress,
+    })
+  );
 
   if (instance) {
     const newServiceIds = [
@@ -857,37 +951,41 @@ ponder.on("StakingContracts:ServiceStaked", async ({ event, context }) => {
     ];
 
     // Update StakingInstance
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      serviceIds: newServiceIds.map((id) => id.toString()),
-      numActiveServices: newServiceIds.length,
-      rawApy: calculateRawApy(
-        instance.rewardsPerSecond ?? 0n,
-        instance.totalStaked ?? 0n,
-        instance.epochLength ?? 0n,
-        newServiceIds.length
-      ),
+    await retryOperation(async () => {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        serviceIds: newServiceIds.map((id) => id.toString()),
+        numActiveServices: newServiceIds.length,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          instance.totalStaked ?? 0n,
+          instance.epochLength ?? 0n,
+          newServiceIds.length
+        ),
+      });
     });
 
     const positionId = `${instanceAddress}-${event.args.serviceId}-${event.args.owner}`;
-    await context.db
-      .insert(StakingPosition)
-      .values({
-        id: positionId,
-        stakingInstanceId: instanceAddress,
-        serviceId: event.args.serviceId.toString(),
-        stakerAddress: event.args.owner,
-        multisig: event.args.multisig,
-        amount: instance?.minStakingDeposit ?? 0n,
-        lastStakeTimestamp: Number(event.block.timestamp),
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        status: "active",
-      })
-      .onConflictDoUpdate({
-        amount: instance?.minStakingDeposit ?? 0n,
-        lastStakeTimestamp: Number(event.block.timestamp),
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        status: "active",
-      });
+    await retryOperation(async () => {
+      await context.db
+        .insert(StakingPosition)
+        .values({
+          id: positionId,
+          stakingInstanceId: instanceAddress,
+          serviceId: event.args.serviceId.toString(),
+          stakerAddress: event.args.owner,
+          multisig: event.args.multisig,
+          amount: instance?.minStakingDeposit ?? 0n,
+          lastStakeTimestamp: Number(event.block.timestamp),
+          lastUpdateTimestamp: Number(event.block.timestamp),
+          status: "active",
+        })
+        .onConflictDoUpdate({
+          amount: instance?.minStakingDeposit ?? 0n,
+          lastStakeTimestamp: Number(event.block.timestamp),
+          lastUpdateTimestamp: Number(event.block.timestamp),
+          status: "active",
+        });
+    });
   }
 });
 
@@ -904,23 +1002,27 @@ ponder.on("StakingContracts:ServiceUnstaked", async ({ event, context }) => {
     );
 
     // Update StakingInstance
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      serviceIds: newServiceIds.map((id) => id.toString()),
-      numActiveServices: newServiceIds.length,
-      rawApy: calculateRawApy(
-        instance.rewardsPerSecond ?? 0n,
-        instance.totalStaked ?? 0n,
-        instance.epochLength ?? 0n,
-        newServiceIds.length
-      ),
+    await retryOperation(async () => {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        serviceIds: newServiceIds.map((id) => id.toString()),
+        numActiveServices: newServiceIds.length,
+        rawApy: calculateRawApy(
+          instance.rewardsPerSecond ?? 0n,
+          instance.totalStaked ?? 0n,
+          instance.epochLength ?? 0n,
+          newServiceIds.length
+        ),
+      });
     });
 
     // Update StakingPosition
     const positionId = `${instanceAddress}-${event.args.serviceId}-${event.args.owner}`;
-    await context.db.update(StakingPosition, { id: positionId }).set({
-      amount: 0n,
-      lastUpdateTimestamp: Number(event.block.timestamp),
-      status: "UNSTAKED",
+    await retryOperation(async () => {
+      await context.db.update(StakingPosition, { id: positionId }).set({
+        amount: 0n,
+        lastUpdateTimestamp: Number(event.block.timestamp),
+        status: "UNSTAKED",
+      });
     });
   }
 });
@@ -936,33 +1038,41 @@ ponder.on("StakingContracts:Withdraw", async ({ event, context }) => {
   console.log(`Amount: ${event.args.amount}`);
 
   try {
-    const instance = await context.db.find(StakingInstance, {
-      id: instanceAddress,
-    });
-    const position = await context.db.find(StakingPosition, { id: positionId });
+    const instance = await retryOperation(async () =>
+      context.db.find(StakingInstance, {
+        id: instanceAddress,
+      })
+    );
+    const position = await retryOperation(async () =>
+      context.db.find(StakingPosition, { id: positionId })
+    );
 
     if (instance && position) {
       const newTotalStaked = (instance.totalStaked ?? 0n) - event.args.amount;
       const newAmount = (position.amount ?? 0n) - event.args.amount;
 
       // Update staking instance
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        totalStaked: newTotalStaked,
-        rawApy: calculateRawApy(
-          instance.rewardsPerSecond ?? 0n,
-          newTotalStaked,
-          instance.epochLength ?? 0n,
-          instance?.numActiveServices ?? 0
-        ),
-        lastApyUpdate: Number(event.block.timestamp),
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
+          totalStaked: newTotalStaked,
+          rawApy: calculateRawApy(
+            instance.rewardsPerSecond ?? 0n,
+            newTotalStaked,
+            instance.epochLength ?? 0n,
+            instance?.numActiveServices ?? 0
+          ),
+          lastApyUpdate: Number(event.block.timestamp),
+        });
       });
 
       // Update staking position
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        amount: newAmount,
+      await retryOperation(async () => {
+        await context.db.update(StakingPosition, { id: positionId }).set({
+          amount: newAmount,
 
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        status: newAmount > 0n ? "active" : "inactive",
+          lastUpdateTimestamp: Number(event.block.timestamp),
+          status: newAmount > 0n ? "active" : "inactive",
+        });
       });
     }
   } catch (e) {
@@ -1017,44 +1127,52 @@ ponder.on("StakingContracts:Checkpoint", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
 
   try {
-    const instance = await context.db.find(StakingInstance, {
-      id: instanceAddress,
-    });
+    const instance = await retryOperation(async () =>
+      context.db.find(StakingInstance, {
+        id: instanceAddress,
+      })
+    );
 
     if (instance) {
       const epochLength = event.args.epochLength;
 
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        epochLength,
-        rawApy: calculateRawApy(
-          instance.rewardsPerSecond ?? 0n,
-          instance.totalStaked ?? 0n,
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
           epochLength,
-          instance.numActiveServices ?? 0
-        ),
-        lastApyUpdate: Number(event.block.timestamp),
+          rawApy: calculateRawApy(
+            instance.rewardsPerSecond ?? 0n,
+            instance.totalStaked ?? 0n,
+            epochLength,
+            instance.numActiveServices ?? 0
+          ),
+          lastApyUpdate: Number(event.block.timestamp),
+        });
       });
     }
 
     // Get all active positions for this instance
-    const positions = await context.db.sql
-      .select()
-      .from(StakingPosition)
-      .where(
-        and(
-          eq(StakingPosition.stakingInstanceId, instanceAddress),
-          eq(StakingPosition.status, "active")
+    const positions = await retryOperation(async () =>
+      context.db.sql
+        .select()
+        .from(StakingPosition)
+        .where(
+          and(
+            eq(StakingPosition.stakingInstanceId, instanceAddress),
+            eq(StakingPosition.status, "active")
+          )
         )
-      );
+    );
 
     // Update each position's rewards
     for (const position of positions) {
       const newRewards = calculateNewRewards(position, instance, event);
-      await context.db.update(StakingPosition, { id: position.id }).set({
-        rewards: (position.rewards ?? 0n) + newRewards,
-        totalRewards: (position.totalRewards ?? 0n) + newRewards,
-        lastUpdateTimestamp: Number(event.block.timestamp),
-        status: (position.amount ?? 0n) > 0n ? "active" : "inactive",
+      await retryOperation(async () => {
+        await context.db.update(StakingPosition, { id: position.id }).set({
+          rewards: (position.rewards ?? 0n) + newRewards,
+          totalRewards: (position.totalRewards ?? 0n) + newRewards,
+          lastUpdateTimestamp: Number(event.block.timestamp),
+          status: (position.amount ?? 0n) > 0n ? "active" : "inactive",
+        });
       });
     }
   } catch (e) {
@@ -1068,8 +1186,10 @@ ponder.on(
     const instanceAddress = event.log.address.toLowerCase();
 
     try {
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        lastApyUpdate: Number(event.block.timestamp),
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
+          lastApyUpdate: Number(event.block.timestamp),
+        });
       });
     } catch (e) {
       console.error(
@@ -1085,8 +1205,10 @@ ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
   const instanceAddress = event.log.address.toLowerCase();
 
   try {
-    await context.db.update(StakingInstance, { id: instanceAddress }).set({
-      lastApyUpdate: Number(event.block.timestamp),
+    await retryOperation(async () => {
+      await context.db.update(StakingInstance, { id: instanceAddress }).set({
+        lastApyUpdate: Number(event.block.timestamp),
+      });
     });
   } catch (e) {
     console.error(
@@ -1097,14 +1219,18 @@ ponder.on("StakingContracts:ServicesEvicted", async ({ event, context }) => {
 
   //Update status of staking position
   try {
-    const positions = await context.db.sql
-      .select()
-      .from(StakingPosition)
-      .where(eq(StakingPosition.stakingInstanceId, instanceAddress));
+    const positions = await retryOperation(async () =>
+      context.db.sql
+        .select()
+        .from(StakingPosition)
+        .where(eq(StakingPosition.stakingInstanceId, instanceAddress))
+    );
 
     for (const position of positions) {
-      await context.db.update(StakingPosition, { id: position.id }).set({
-        status: "inactive",
+      await retryOperation(async () => {
+        await context.db.update(StakingPosition, { id: position.id }).set({
+          status: "inactive",
+        });
       });
     }
   } catch (e) {
@@ -1178,35 +1304,37 @@ ponder.on(
         ),
       ]);
 
-      await context.db
-        .insert(StakingInstance)
-        .values({
-          id: instanceAddress,
-          implementation: event.args.implementation,
-          deployer: event.args.sender,
-          chain: context?.network.name,
-          isActive: true,
-          maxNumServices: Number(maxNumServices),
-          blockNumber: Number(event.block.number),
-          timestamp: Number(event.block.timestamp),
-          rewardsPerSecond,
-          stakingToken,
-          agentIds: Array.isArray(agentIds)
-            ? agentIds.map((id) => id.toString())
-            : [],
-          minStakingDeposit,
-          maxInactivityPeriods: Number(maxInactivityPeriods),
-          minStakingPeriods: Number(minStakingPeriods),
-          livenessPeriod: Number(livenessPeriod),
-          timeForEmissions: Number(timeForEmissions),
-          numAgentInstances: Number(numAgentInstances),
-          multisigThreshold: Number(multisigThreshold),
-          activityCheckerAddress,
-          configHash,
-        })
-        .onConflictDoUpdate({
-          isActive: true,
-        });
+      await retryOperation(async () => {
+        await context.db
+          .insert(StakingInstance)
+          .values({
+            id: instanceAddress,
+            implementation: event.args.implementation,
+            deployer: event.args.sender,
+            chain: context?.network.name,
+            isActive: true,
+            maxNumServices: Number(maxNumServices),
+            blockNumber: Number(event.block.number),
+            timestamp: Number(event.block.timestamp),
+            rewardsPerSecond,
+            stakingToken,
+            agentIds: Array.isArray(agentIds)
+              ? agentIds.map((id) => id.toString())
+              : [],
+            minStakingDeposit,
+            maxInactivityPeriods: Number(maxInactivityPeriods),
+            minStakingPeriods: Number(minStakingPeriods),
+            livenessPeriod: Number(livenessPeriod),
+            timeForEmissions: Number(timeForEmissions),
+            numAgentInstances: Number(numAgentInstances),
+            multisigThreshold: Number(multisigThreshold),
+            activityCheckerAddress,
+            configHash,
+          })
+          .onConflictDoUpdate({
+            isActive: true,
+          });
+      });
     } catch (e) {
       console.error(
         `Error handling instance creation for ${instanceAddress}:`,
@@ -1222,8 +1350,10 @@ ponder.on(
     const instanceAddress = event.args.instance.toLowerCase();
 
     try {
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        isActive: event.args.isEnabled,
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
+          isActive: event.args.isEnabled,
+        });
       });
     } catch (e) {
       console.error(
@@ -1240,8 +1370,10 @@ ponder.on(
     const instanceAddress = event.args.instance.toLowerCase();
 
     try {
-      await context.db.update(StakingInstance, { id: instanceAddress }).set({
-        isActive: false,
+      await retryOperation(async () => {
+        await context.db.update(StakingInstance, { id: instanceAddress }).set({
+          isActive: false,
+        });
       });
     } catch (e) {
       console.error(
@@ -1261,13 +1393,17 @@ ponder.on("StakingContracts:RewardClaimed", async ({ event, context }) => {
   const positionId = `${instanceAddress}-${chainServiceId}`;
 
   try {
-    const position = await context.db.find(StakingPosition, { id: positionId });
+    const position = await retryOperation(async () =>
+      context.db.find(StakingPosition, { id: positionId })
+    );
 
     if (position) {
-      await context.db.update(StakingPosition, { id: positionId }).set({
-        rewards: 0n,
-        claimedRewards: (position.claimedRewards ?? 0n) + event.args.reward,
-        lastUpdateTimestamp: Number(event.block.timestamp),
+      await retryOperation(async () => {
+        await context.db.update(StakingPosition, { id: positionId }).set({
+          rewards: 0n,
+          claimedRewards: (position.claimedRewards ?? 0n) + event.args.reward,
+          lastUpdateTimestamp: Number(event.block.timestamp),
+        });
       });
     }
   } catch (e) {
