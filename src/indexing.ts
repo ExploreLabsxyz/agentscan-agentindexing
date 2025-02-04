@@ -50,6 +50,143 @@ const createDefaultService = (
   owner: null,
 });
 
+ponder.on(`MainnetAgentRegistry:UpdateUnitHash`, async ({ event, context }) => {
+  const agentId = event.args.unitId.toString();
+
+  const metadataJson = await fetchMetadata(
+    event.args.unitHash,
+    agentId,
+    "agent"
+  );
+
+  if (!metadataJson) {
+    console.warn(`No metadata found for agent ${agentId}`);
+    return;
+  }
+
+  const updateData = {
+    id: agentId,
+    tokenId: Number(agentId),
+    name: metadataJson.name,
+    description: metadataJson.description,
+    image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
+    codeUri: metadataJson.codeUri
+      ? transformIpfsUrl(metadataJson.codeUri)
+      : null,
+    blockNumber: Number(event.block.number),
+    timestamp: Number(event.block.timestamp),
+    packageHash: metadataJson.packageHash,
+    metadataHash: metadataJson.metadataHash,
+    metadataURI: metadataJson.metadataURI,
+  };
+
+  try {
+    await context.db.update(Agent, { id: agentId }).set(updateData);
+  } catch (e) {
+    console.error("Error updating agent:", e);
+    try {
+      await context.db.insert(Agent).values(updateData).onConflictDoUpdate({
+        tokenId: updateData.tokenId,
+      });
+    } catch (e) {
+      console.error("Error inserting new agent:", e);
+    }
+  }
+
+  try {
+    const { client } = context;
+    const { MainnetAgentRegistry } = context.contracts;
+    const dependencies = await client.readContract({
+      abi: MainnetAgentRegistry.abi,
+      address: MainnetAgentRegistry.address,
+      functionName: "getDependencies",
+      args: [event.args.unitId],
+    });
+
+    if (dependencies?.[1]?.length > 0) {
+      const validDependencies = dependencies[1]
+        .map((dep) => dep.toString())
+        .filter((dep) => dep !== "")
+        .map((dependency) => ({
+          id: `${agentId}-${dependency}`,
+          agentId,
+          componentId: dependency,
+        }));
+
+      if (validDependencies.length > 0) {
+        console.log(`Inserting dependencies for agent ${agentId}`);
+        try {
+          await context.db.insert(ComponentAgent).values(validDependencies);
+        } catch (e) {
+          console.error("Error inserting component agent:", e);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      `Failed to process dependencies for agent ${agentId}:`,
+      error
+    );
+  }
+
+  console.log(
+    `Handling MainnetAgentRegistry:UpdateUnitHash for agent ${agentId}`
+  );
+});
+
+ponder.on(
+  "MainnetComponentRegistry:UpdateUnitHash",
+  async ({ event, context }) => {
+    const componentId = event.args.unitId.toString();
+    console.log(
+      `Handling MainnetComponentRegistry:UpdateUnitHash for component ${componentId}`
+    );
+
+    const metadataJson = await fetchMetadata(
+      event.args.unitHash,
+      componentId,
+      "component"
+    );
+
+    if (!metadataJson) {
+      console.warn(`No metadata found for component ${componentId}`);
+      return;
+    }
+
+    const updateData = {
+      id: componentId,
+      tokenId: Number(componentId),
+      name: metadataJson.name,
+      description: metadataJson.description,
+      image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
+      codeUri: metadataJson.codeUri
+        ? transformIpfsUrl(metadataJson.codeUri)
+        : null,
+      blockNumber: Number(event.block.number),
+      timestamp: Number(event.block.timestamp),
+      packageHash: metadataJson.packageHash,
+      metadataHash: metadataJson.metadataHash,
+      metadataURI: metadataJson.metadataURI,
+    };
+
+    try {
+      await context.db.update(Component, { id: componentId }).set(updateData);
+    } catch (e) {
+      console.error("Error updating component:", e);
+      try {
+        await context.db
+          .insert(Component)
+          .values(updateData)
+          .onConflictDoUpdate({
+            tokenId: updateData.tokenId,
+          });
+      } catch (e) {
+        console.error("Error inserting new component:", e);
+      }
+    }
+  }
+);
+
 ponder.on(`MainnetAgentRegistry:CreateUnit`, async ({ event, context }) => {
   const agentId = event.args.unitId.toString();
   console.log(`Handling MainnetAgentRegistry:CreateUnit for agent ${agentId}`);
