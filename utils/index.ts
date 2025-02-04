@@ -268,8 +268,8 @@ export const fetchAndTransformMetadata = async (
       const metadataJson = {
         name: data.name || null,
         description: data.description || null,
-        image: data.image || null,
-        codeUri: data.code_uri || data.codeUri || null,
+        image,
+        codeUri,
         packageHash: extractPackageHash(
           data.codeUri || data.code_uri || undefined,
           data.packageHash
