@@ -520,13 +520,18 @@ CONTRACT_NAMES.forEach((contractName) => {
       chain,
       event.args.serviceId.toString().toLowerCase()
     );
-
+    let metadataJson = null;
     try {
-      const metadataJson = await fetchMetadata(
+      metadataJson = await fetchMetadata(
         event.args.configHash,
         serviceId,
         "service"
       );
+    } catch (e) {
+      console.error("Error fetching metadata:", e);
+    }
+
+    try {
       await context.db.update(Service, { id: serviceId }).set({
         name: metadataJson?.name,
         description: metadataJson?.description,
@@ -543,22 +548,43 @@ CONTRACT_NAMES.forEach((contractName) => {
     } catch (e) {
       console.error("Error updating service, attempting creation!!:", e);
       try {
-        const defaultService = createDefaultService(
-          serviceId,
-          chain,
-          Number(event.block.number),
-          Number(event.block.timestamp),
-          event.args.configHash,
-          Number(event.args.serviceId)
-        );
-        await context.db
-          .insert(Service)
-          .values({
-            ...defaultService,
-          })
-          .onConflictDoUpdate({
+        if (metadataJson) {
+          const serviceData = {
+            id: serviceId,
+            tokenId: Number(event.args.serviceId),
+            chain,
+            securityDeposit: 0n,
+            multisig: "0x",
+            configHash: event.args.configHash,
+            threshold: 0,
+            maxNumAgentInstances: 0,
+            numAgentInstances: 0,
+            state: "UNREGISTERED" as const,
+            blockNumber: Number(event.block.number),
+            chainId: getChainId(chain),
+            name: metadataJson?.name,
+            description: metadataJson?.description,
+            image: metadataJson?.image
+              ? transformIpfsUrl(metadataJson?.image)
+              : null,
+            codeUri: metadataJson?.codeUri
+              ? transformIpfsUrl(metadataJson?.codeUri)
+              : null,
+            metadataURI: metadataJson?.metadataURI,
+            packageHash: metadataJson?.packageHash,
             metadataHash: event.args.configHash,
-          });
+            timestamp: Number(event.block.timestamp),
+          };
+          await context.db
+            .insert(Service)
+            .values({
+              ...serviceData,
+              multisig: serviceData.multisig as `0x${string}`,
+            })
+            .onConflictDoUpdate({
+              multisig: serviceData.multisig as `0x${string}`,
+            });
+        }
       } catch (insertError) {
         console.error("Error in UpdateService fallback handler:", insertError);
       }
