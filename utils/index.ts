@@ -136,7 +136,7 @@ export async function fetchMetadata(
 ): Promise<any> {
   if (!hash) {
     console.warn(`No hash provided for ${type} ${id}`);
-    return getDefaultMetadata(type, id);
+    return getDefaultMetadata(hash, type, id);
   }
 
   try {
@@ -145,7 +145,7 @@ export async function fetchMetadata(
       console.log(`Metadata fetched for ${type} ${id}:`);
       return metadata;
     }
-    return getDefaultMetadata(type, id);
+    return getDefaultMetadata(hash, type, id);
   } catch (error) {
     console.error(
       `Metadata fetch failed for ${type} ${id} with hash ${hash}:`,
@@ -153,21 +153,26 @@ export async function fetchMetadata(
         error: error instanceof Error ? error.message : "Unknown error",
       }
     );
-    return getDefaultMetadata(type, id);
+    return getDefaultMetadata(hash, type, id);
   }
 }
 
 function getDefaultMetadata(
+  hash: string,
   type: "component" | "service" | "agent",
   id: string
 ) {
+  const metadataPrefix = "f01701220";
+  const finishedConfigHash = hash.slice(2);
+  const ipfsURL = "https://gateway.autonolas.tech/ipfs/";
+  const metadataURI = `${ipfsURL}${metadataPrefix}${finishedConfigHash}`;
   return {
     name: null,
     description: null,
     image: null,
     codeUri: null,
-    packageHash: null,
-    metadataURI: null,
+    packageHash: hash,
+    metadataURI,
   };
 }
 
