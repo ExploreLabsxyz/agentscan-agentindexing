@@ -171,8 +171,9 @@ function getDefaultMetadata(
     description: null,
     image: null,
     codeUri: null,
-    packageHash: hash,
+    packageHash: null,
     metadataURI,
+    metadataHash: finishedConfigHash,
   };
 }
 
@@ -271,7 +272,7 @@ export const fetchAndTransformMetadata = async (
           data.packageHash
         ),
         metadataURI,
-        metadataHash: configHash,
+        metadataHash: finishedConfigHash,
       };
       console.log(`Metadata JSON for ${configInfo.id}:`, metadataJson);
       try {
@@ -309,16 +310,22 @@ function extractPackageHash(
   codeUri?: string,
   existingHash?: string | null
 ): string | null {
+  let hash: string | null = null;
+
   if (codeUri) {
     if (codeUri.includes("ipfs://")) {
-      return codeUri.split("ipfs://")[1]?.trim().replace(/\/$/, "") || null;
+      hash = codeUri.split("ipfs://")[1]?.trim().replace(/\/$/, "") || null;
+    } else if (codeUri.includes("/ipfs/")) {
+      hash = codeUri.split("/ipfs/")[1]?.trim().replace(/\/$/, "") || null;
+    } else {
+      hash = codeUri.trim().replace(/\/$/, "");
     }
-    if (codeUri.includes("/ipfs/")) {
-      return codeUri.split("/ipfs/")[1]?.trim().replace(/\/$/, "") || null;
-    }
-    return codeUri.trim().replace(/\/$/, "");
+  } else {
+    hash = existingHash?.trim().replace(/\/$/, "") || null;
   }
-  return existingHash?.trim().replace(/\/$/, "") || null;
+
+  // Remove 0x prefix if present
+  return hash?.replace(/^0x/, "") || null;
 }
 
 export function transformIpfsUrl(
