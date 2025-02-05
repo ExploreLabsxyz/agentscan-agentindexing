@@ -52,7 +52,7 @@ const createDefaultService = (
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
-  maxRetries: number = 5,
+  maxRetries: number = 10,
   delay: number = 1000
 ): Promise<T> => {
   let lastError;
@@ -63,28 +63,18 @@ const retryOperation = async <T>(
     } catch (error) {
       lastError = error;
 
-      // Check if it's the "too many clients" error
-      if (
-        error instanceof Error &&
-        error.message.includes("too many clients")
-      ) {
-        if (attempt === maxRetries) {
-          console.error(
-            `Final retry attempt failed after ${maxRetries} attempts:`,
-            error
-          );
-          throw error;
-        }
-
-        console.warn(
-          `Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`
+      if (attempt === maxRetries) {
+        console.error(
+          `Final retry attempt failed after ${maxRetries} attempts:`,
+          error
         );
-        await new Promise((resolve) => setTimeout(resolve, delay * attempt)); // Exponential backoff
-        continue;
+        throw error;
       }
 
-      // If it's not a "too many clients" error, throw immediately
-      throw error;
+      console.warn(
+        `Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay * attempt)); // Exponential backoff
     }
   }
 
@@ -100,25 +90,20 @@ ponder.on(`MainnetAgentRegistry:UpdateUnitHash`, async ({ event, context }) => {
     "agent"
   );
 
-  if (!metadataJson) {
-    console.warn(`No metadata found for agent ${agentId}`);
-    return;
-  }
-
   const updateData = {
     id: agentId,
     tokenId: Number(agentId),
-    name: metadataJson.name,
-    description: metadataJson.description,
-    image: metadataJson.image ? transformIpfsUrl(metadataJson.image) : null,
-    codeUri: metadataJson.codeUri
+    name: metadataJson?.name,
+    description: metadataJson?.description,
+    image: metadataJson?.image ? transformIpfsUrl(metadataJson.image) : null,
+    codeUri: metadataJson?.codeUri
       ? transformIpfsUrl(metadataJson.codeUri)
       : null,
     blockNumber: Number(event.block.number),
     timestamp: Number(event.block.timestamp),
-    packageHash: metadataJson.packageHash,
-    metadataHash: metadataJson.metadataHash,
-    metadataURI: metadataJson.metadataURI,
+    packageHash: metadataJson?.packageHash,
+    metadataHash: metadataJson?.metadataHash,
+    metadataURI: metadataJson?.metadataURI,
   };
 
   try {

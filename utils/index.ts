@@ -140,11 +140,12 @@ export async function fetchMetadata(
   }
 
   try {
-    const metadata = await fetchAndTransformMetadata(hash, 7, { type, id });
+    const metadata = await fetchAndTransformMetadata(hash, 10, { type, id });
     if (metadata) {
       console.log(`Metadata fetched for ${type} ${id}:`);
       return metadata;
     }
+    console.error(`Metadata fetch failed for ${type} ${id} with hash ${hash}`);
     return getDefaultMetadata(hash, type, id);
   } catch (error) {
     console.error(
@@ -237,7 +238,7 @@ const PROXY_PATTERNS: Record<string, ProxyPattern> = {
 
 export const fetchAndTransformMetadata = async (
   configHash: string,
-  maxRetries = 5,
+  maxRetries = 10,
   configInfo: ConfigInfo
 ): Promise<MetadataJson | null> => {
   const metadataPrefix = "f01701220";
