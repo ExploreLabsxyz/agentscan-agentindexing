@@ -72,7 +72,8 @@ const retryOperation = async <T>(
       }
 
       console.warn(
-        `Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`
+        `Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`,
+        error
       );
       await new Promise((resolve) => setTimeout(resolve, delay * attempt)); // Exponential backoff
     }
