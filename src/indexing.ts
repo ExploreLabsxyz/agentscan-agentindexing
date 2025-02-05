@@ -52,7 +52,7 @@ const createDefaultService = (
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
-  maxRetries: number = 10,
+  maxRetries: number = 20,
   delay: number = 1000
 ): Promise<T> => {
   let lastError;
