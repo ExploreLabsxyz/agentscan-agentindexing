@@ -140,7 +140,7 @@ export async function fetchMetadata(
   }
 
   try {
-    const metadata = await fetchAndTransformMetadata(hash, 20, { type, id });
+    const metadata = await fetchAndTransformMetadata(hash, 10, { type, id });
     if (metadata) {
       console.log(`Metadata fetched for ${type} ${id}:`, metadata);
       return metadata;
